@@ -45,7 +45,11 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
 
+      # Stamps versionName/versionCode from the tag, so the APK identifies itself
+      # as exactly the version being released.
       - name: Assemble release APK
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.name }}
         run: ./gradlew assembleRelease --no-daemon
 
       # Signing is optional so the workflow still works in a fork with no secrets:

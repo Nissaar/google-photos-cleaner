@@ -6,6 +6,29 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+/**
+ * The version comes from the release tag, so the tag, the APK and the published
+ * release can never disagree. Locally (no RELEASE_TAG) it builds as a dev version.
+ */
+val appVersionName: String =
+    (System.getenv("RELEASE_TAG")?.takeIf { it.isNotBlank() } ?: "v0.1.0-dev")
+        .removePrefix("v")
+
+/**
+ * Android decides what counts as an update purely from versionCode, and it must
+ * increase every release or the new APK will not install over the old one. Deriving
+ * it from the version number keeps it monotonic without anyone remembering to bump it.
+ *
+ * Minor and patch are assumed to stay below 100, which 1.2.3 -> 10203 relies on.
+ */
+val appVersionCode: Int = run {
+    val parts = appVersionName.substringBefore('-').split('.')
+    val major = parts.getOrNull(0)?.toIntOrNull() ?: 0
+    val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
+    val patch = parts.getOrNull(2)?.toIntOrNull() ?: 0
+    (major * 10_000) + (minor * 100) + patch
+}
+
 android {
     namespace = "xyz.photocleaner"
     compileSdk = 35
@@ -14,8 +37,8 @@ android {
         applicationId = "xyz.photocleaner"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
         // No test-orchestrator / no analytics dependencies are pulled in on purpose.
     }
 
