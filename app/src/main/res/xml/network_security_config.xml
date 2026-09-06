@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      Deny cleartext everywhere, and refuse to honour user-installed CAs.
+      This means an attacker who convinces the user to install a proxy CA
+      (mitmproxy, corporate MDM, malware) still cannot read the Google session.
+    -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
