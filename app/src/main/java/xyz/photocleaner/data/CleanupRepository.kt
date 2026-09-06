@@ -79,6 +79,24 @@ class CleanupRepository(
             }.toMap()
         }
 
+    /** How many photos have been judged in each month, for review progress. */
+    fun decidedByMonth(zone: ZoneId = ZoneId.systemDefault()): Flow<Map<YearMonth, Int>> =
+        dao.observeDecidedTimestamps().map { timestamps ->
+            timestamps.groupingBy {
+                YearMonth.from(java.time.Instant.ofEpochMilli(it).atZone(zone))
+            }.eachCount()
+        }
+
+    /**
+     * Clears the verdicts for one month so its photos come back up for review.
+     * Returns how many were forgotten. Nothing in Google Photos is touched.
+     */
+    suspend fun resetMonth(month: YearMonth, zone: ZoneId = ZoneId.systemDefault()): Int {
+        val from = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val to = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        return dao.clearUnappliedBetween(from, to)
+    }
+
     /** True when the month grid has nothing to show yet. */
     suspend fun needsInitialScan(): Boolean = indexDao.scanState() == null
 

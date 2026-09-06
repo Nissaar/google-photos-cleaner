@@ -10,8 +10,20 @@ import kotlinx.coroutines.launch
 import xyz.photocleaner.Graph
 import java.time.YearMonth
 
+/** One row of the month grid: how many photos it holds and how many you have judged. */
+data class MonthEntry(
+    val month: YearMonth,
+    val total: Int,
+    val reviewed: Int,
+) {
+    val remaining: Int get() = (total - reviewed).coerceAtLeast(0)
+    val fullyReviewed: Boolean get() = total > 0 && reviewed >= total
+    val started: Boolean get() = reviewed > 0
+}
+
 data class MonthsState(
     val counts: Map<YearMonth, Int> = emptyMap(),
+    val decided: Map<YearMonth, Int> = emptyMap(),
     val scanning: Boolean = false,
     /** True while the very first scan runs, when there is nothing cached to show. */
     val initialScan: Boolean = false,
@@ -19,8 +31,10 @@ data class MonthsState(
     val error: String? = null,
 ) {
     /** Months newest first, which is how people tend to clean up. */
-    val months: List<Pair<YearMonth, Int>>
-        get() = counts.entries.sortedByDescending { it.key }.map { it.key to it.value }
+    val months: List<MonthEntry>
+        get() = counts.entries
+            .sortedByDescending { it.key }
+            .map { MonthEntry(it.key, it.value, decided[it.key] ?: 0) }
 
     val totalPhotos: Int get() = counts.values.sum()
 }
@@ -48,6 +62,19 @@ class MonthsViewModel : ViewModel() {
                 _state.value = _state.value.copy(counts = counts)
             }
         }
+        viewModelScope.launch {
+            repo.decidedByMonth().collect { decided ->
+                _state.value = _state.value.copy(decided = decided)
+            }
+        }
+    }
+
+    /**
+     * Forgets the verdicts for one month so it can be gone through again.
+     * Local only — nothing in Google Photos changes.
+     */
+    fun resetMonth(month: YearMonth) {
+        viewModelScope.launch { repo.resetMonth(month) }
     }
 
     /**

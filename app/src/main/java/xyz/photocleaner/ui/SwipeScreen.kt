@@ -122,15 +122,19 @@ fun SwipeScreen(
                 state.loading -> LoadingBlock(state.loadedCount)
                 state.error != null -> MessageBlock(state.error!!, "Go back", onBack)
                 state.isEmpty -> MessageBlock(
-                    "No photos left to review in ${month.format(MONTH_FMT)}.",
+                    "You have already been through ${month.format(MONTH_FMT)}.",
                     "Pick another month",
                     onBack,
+                    secondaryLabel = "Review this month again",
+                    onSecondary = vm::reviewAgain,
                 )
                 state.finished -> MessageBlock(
                     "Done with ${month.format(MONTH_FMT)}.\n" +
                         "${state.keptThisSession} kept · ${state.deletedThisSession} marked for deletion.",
                     if (state.deletedThisSession > 0) "Review deletions" else "Pick another month",
                     if (state.deletedThisSession > 0) onReview else onBack,
+                    secondaryLabel = "Start this month over",
+                    onSecondary = vm::reviewAgain,
                 )
                 else -> PhotoDeck(
                     current = state.current,
@@ -400,7 +404,13 @@ private fun LoadingBlock(count: Int) {
 }
 
 @Composable
-private fun MessageBlock(message: String, actionLabel: String, onAction: () -> Unit) {
+private fun MessageBlock(
+    message: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    secondaryLabel: String? = null,
+    onSecondary: (() -> Unit)? = null,
+) {
     Column(
         Modifier.padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -413,5 +423,10 @@ private fun MessageBlock(message: String, actionLabel: String, onAction: () -> U
         )
         Spacer(Modifier.height(16.dp))
         TextButton(onClick = onAction) { Text(actionLabel) }
+        if (secondaryLabel != null && onSecondary != null) {
+            TextButton(onClick = onSecondary) {
+                Text(secondaryLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }

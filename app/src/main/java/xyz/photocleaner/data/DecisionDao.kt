@@ -25,6 +25,26 @@ interface DecisionDao {
     @Query("SELECT dedupKey FROM decisions WHERE takenAt >= :from AND takenAt < :to")
     suspend fun decidedKeysBetween(from: Long, to: Long): List<String>
 
+    /**
+     * Just the dates, so the month grid can show review progress.
+     *
+     * Grouping happens in Kotlin rather than SQL: SQLite's date functions work in UTC,
+     * which would put photos near a month boundary in a different bucket than the rest
+     * of the app, and that mismatch would be invisible until it confused someone.
+     */
+    @Query("SELECT takenAt FROM decisions")
+    fun observeDecidedTimestamps(): Flow<List<Long>>
+
+    /**
+     * Forgets verdicts for one month so it can be reviewed again.
+     *
+     * Deliberately spares `applied = 1` rows: those photos are already in Google's
+     * trash and out of the library, and their records are what the undo history is
+     * built from. Only undecided-in-practice verdicts are cleared.
+     */
+    @Query("DELETE FROM decisions WHERE takenAt >= :from AND takenAt < :to AND applied = 0")
+    suspend fun clearUnappliedBetween(from: Long, to: Long): Int
+
     @Query("SELECT * FROM decisions WHERE verdict = :verdict AND applied = 0 ORDER BY decidedAt DESC")
     fun pending(verdict: Verdict = Verdict.DELETE): Flow<List<Decision>>
 

@@ -51,11 +51,27 @@ class SwipeViewModel : ViewModel() {
 
     fun load(month: YearMonth) {
         if (_state.value.month == month && _state.value.items.isNotEmpty()) return
+        startLoad(month)
+    }
 
+    /**
+     * Forgets this month's verdicts and deals the deck again.
+     *
+     * Photos already sent to the trash are left alone — they are out of the library
+     * and will not come back — so this brings back what you kept or had marked but
+     * not yet committed.
+     */
+    fun reviewAgain() {
+        val month = _state.value.month ?: return
+        startLoad(month, resetFirst = true)
+    }
+
+    private fun startLoad(month: YearMonth, resetFirst: Boolean = false) {
         job?.cancel()
         job = viewModelScope.launch {
             _state.value = SwipeState(month = month, loading = true)
             try {
+                if (resetFirst) repo.resetMonth(month)
                 val items = repo.loadMonth(month) { count ->
                     _state.value = _state.value.copy(loadedCount = count)
                 }
