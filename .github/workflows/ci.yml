@@ -67,11 +67,16 @@ jobs:
         run: |
           set -euo pipefail
           APK=app/build/outputs/apk/release/app-release-unsigned.apk
-          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -r | head -1)
+          [ -f "$APK" ] || { echo "::error::APK not found at $APK"; exit 1; }
 
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -r | head -1)
+          [ -n "$AAPT" ] || { echo "::error::aapt2 not found under $ANDROID_HOME"; exit 1; }
+
+          # grep exits 1 on no match, which pipefail would turn into an opaque failure.
+          # An empty permission list is a real result, so handle it explicitly below.
           PERMS=$("$AAPT" dump permissions "$APK" \
-            | grep "uses-permission" \
-            | grep -oP "(?<=name=')[^']+" \
+            | { grep "uses-permission" || true; } \
+            | { grep -oP "(?<=name=')[^']+" || true; } \
             | sort -u)
 
           EXPECTED=$(printf '%s\n' \
