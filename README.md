@@ -165,6 +165,70 @@ Minimum Android 8.0 (API 26).
 
 ---
 
+## Signing
+
+The signing key is the app's permanent identity. Android accepts an update only if
+it is signed by the same key as the installed version, so **losing the key means you
+can never update the app again** — existing users would have to uninstall and lose
+their local data. There is no recovery process.
+
+### Generate it (once)
+
+```bash
+./tools/make-keystore.sh
+```
+
+You will be prompted for a password and certificate details. Both are permanent:
+the password cannot be reset, and the certificate fields cannot be edited later.
+
+PKCS12 keystores use a single password for the store and the key, so
+`KEYSTORE_PASSWORD` and `KEY_PASSWORD` below take the same value.
+
+### Back it up
+
+Losing this file is unrecoverable, so keep more than one copy, in more than one place:
+
+- **A password manager** — store the `.jks` as a file attachment alongside the
+  password. This is the single most useful copy, because the file and the password
+  it needs stay together.
+- **An offline copy** — a USB drive or printed base64 in a safe. Anything that
+  survives losing this machine and your cloud accounts at the same time.
+- **Not** in the repository, not in a public cloud folder, not in a chat message.
+
+Also record the SHA-256 fingerprint (the script prints it) somewhere separate. It
+lets you verify which key any given APK was signed with, even years later.
+
+### Wire it into CI
+
+Add four repository secrets under **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+|---|---|
+| `KEYSTORE_BASE64` | output of `base64 -w0 photo-cleaner-release.jks` |
+| `KEY_ALIAS` | the alias you chose (default `photocleaner`) |
+| `KEYSTORE_PASSWORD` | the password you chose |
+| `KEY_PASSWORD` | the same password |
+
+Then push a tag and the release workflow builds, signs, checksums and publishes:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Without those secrets the workflow still runs — it publishes an **unsigned** APK and
+labels it as such, so forks work without configuration.
+
+### Switching from debug to release builds
+
+Debug builds are signed with the auto-generated key in `~/.android/debug.keystore`,
+which is a *different* key. Android refuses to install an update signed by a different
+key, so the first release-signed APK will fail with "App not installed" until the
+debug build is uninstalled — **which clears its local data**. Sign out and finish any
+pending deletions first.
+
+---
+
 ## Layout
 
 ```
