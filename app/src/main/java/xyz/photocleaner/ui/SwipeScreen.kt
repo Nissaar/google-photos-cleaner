@@ -243,55 +243,79 @@ private fun PhotoCard(item: MediaItem, modifier: Modifier) {
                 // Surfaced rather than swallowed: a blank card gives nothing to debug.
                 var loadError by remember(item.dedupKey) { mutableStateOf<String?>(null) }
                 var loading by remember(item.dedupKey) { mutableStateOf(true) }
+                var playing by remember(item.dedupKey) { mutableStateOf(false) }
+                val authUser = xyz.photocleaner.Graph.session.authUser
 
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(item.previewUrl(authUser = xyz.photocleaner.Graph.session.authUser))
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize(),
-                    onSuccess = { loading = false; loadError = null },
-                    onLoading = { loading = true },
-                    onError = { state ->
-                        loading = false
-                        loadError = state.result.throwable.message ?: "Image failed to load"
-                    },
-                )
-
-                if (loading && loadError == null) {
-                    CircularProgressIndicator(color = Color.White.copy(alpha = 0.6f))
-                }
-
-                loadError?.let { message ->
-                    Column(
-                        Modifier.fillMaxSize().padding(20.dp),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            "Could not load this photo",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            textAlign = TextAlign.Center,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            message,
-                            color = Color(0xFFFF8A80),
-                            style = MaterialTheme.typography.labelSmall,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                }
-                if (item.isVideo) {
-                    Icon(
-                        Icons.Default.PlayCircle,
-                        contentDescription = "Video",
-                        tint = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier.size(56.dp),
+                if (item.isVideo && playing) {
+                    VideoPlayer(
+                        item = item,
+                        authUser = authUser,
+                        modifier = Modifier.fillMaxSize(),
+                        onFailed = { code ->
+                            // Fall back to the still frame rather than a black rectangle.
+                            playing = false
+                            loadError = "Video would not play ($code)"
+                        },
                     )
+                } else {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(item.previewUrl(authUser = authUser))
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(),
+                        onSuccess = { loading = false; loadError = null },
+                        onLoading = { loading = true },
+                        onError = { state ->
+                            loading = false
+                            loadError = state.result.throwable.message ?: "Image failed to load"
+                        },
+                    )
+
+                    if (loading && loadError == null) {
+                        CircularProgressIndicator(color = Color.White.copy(alpha = 0.6f))
+                    }
+
+                    loadError?.let { message ->
+                        Column(
+                            Modifier.fillMaxSize().padding(20.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                if (item.isVideo) "Could not play this video"
+                                else "Could not load this photo",
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleMedium,
+                                textAlign = TextAlign.Center,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                message,
+                                color = Color(0xFFFF8A80),
+                                style = MaterialTheme.typography.labelSmall,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+
+                    if (item.isVideo && loadError == null) {
+                        // Tap to play, rather than autoplaying: swiping through a deck
+                        // that starts blaring audio on every card would be unusable.
+                        IconButton(
+                            onClick = { playing = true },
+                            modifier = Modifier.size(72.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.PlayCircle,
+                                contentDescription = "Play video",
+                                tint = Color.White.copy(alpha = 0.9f),
+                                modifier = Modifier.size(64.dp),
+                            )
+                        }
+                    }
                 }
             }
             Row(

@@ -96,6 +96,8 @@ dependencies {
     implementation(libs.sqlcipher)
     implementation(libs.coil.compose)
     implementation(libs.okhttp)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
     implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)

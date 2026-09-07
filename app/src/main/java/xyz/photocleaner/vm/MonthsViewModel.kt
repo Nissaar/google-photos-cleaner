@@ -21,9 +21,22 @@ data class MonthEntry(
     val started: Boolean get() = reviewed > 0
 }
 
+/**
+ * Which months the grid shows.
+ *
+ * Defaults to [TO_REVIEW]: with a couple of hundred months, a badge on finished tiles
+ * still leaves you scanning the whole grid to find what is left to do.
+ */
+enum class MonthFilter(val label: String) {
+    TO_REVIEW("To review"),
+    DONE("Done"),
+    ALL("All"),
+}
+
 data class MonthsState(
     val counts: Map<YearMonth, Int> = emptyMap(),
     val decided: Map<YearMonth, Int> = emptyMap(),
+    val filter: MonthFilter = MonthFilter.TO_REVIEW,
     val scanning: Boolean = false,
     /** True while the very first scan runs, when there is nothing cached to show. */
     val initialScan: Boolean = false,
@@ -35,6 +48,19 @@ data class MonthsState(
         get() = counts.entries
             .sortedByDescending { it.key }
             .map { MonthEntry(it.key, it.value, decided[it.key] ?: 0) }
+
+    val visibleMonths: List<MonthEntry>
+        get() = when (filter) {
+            MonthFilter.TO_REVIEW -> months.filterNot { it.fullyReviewed }
+            MonthFilter.DONE -> months.filter { it.fullyReviewed }
+            MonthFilter.ALL -> months
+        }
+
+    val toReviewCount: Int get() = months.count { !it.fullyReviewed }
+    val doneCount: Int get() = months.count { it.fullyReviewed }
+
+    /** Photos still awaiting a verdict, across every month. */
+    val photosLeft: Int get() = months.sumOf { it.remaining }
 
     val totalPhotos: Int get() = counts.values.sum()
 }
@@ -67,6 +93,10 @@ class MonthsViewModel : ViewModel() {
                 _state.value = _state.value.copy(decided = decided)
             }
         }
+    }
+
+    fun setFilter(filter: MonthFilter) {
+        _state.value = _state.value.copy(filter = filter)
     }
 
     /**

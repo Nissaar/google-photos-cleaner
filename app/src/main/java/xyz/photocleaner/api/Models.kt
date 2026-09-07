@@ -39,6 +39,20 @@ data class MediaItem(
     fun previewUrl(maxSize: Int = 1600, authUser: Int = 0): String =
         "$thumbBaseUrl=w$maxSize-h$maxSize-k-no?authuser=$authUser"
 
+    /**
+     * Playable stream URLs for a video, best first.
+     *
+     * `=dv` asks for the original file, which is the documented way to get video bytes
+     * but can be large and in a codec the device may not decode. `=m18` asks Google for
+     * a transcoded H.264/MP4 rendition, which is small and near-universally playable.
+     * Playback tries these in order, so a failure on one is not a dead end.
+     */
+    fun videoUrls(authUser: Int = 0): List<String> = listOf(
+        "$thumbBaseUrl=m18?authuser=$authUser",
+        "$thumbBaseUrl=dv?authuser=$authUser",
+        "$thumbBaseUrl=m22?authuser=$authUser",
+    )
+
     fun yearMonth(zone: ZoneId = ZoneId.systemDefault()): YearMonth =
         YearMonth.from(Instant.ofEpochMilli(timestamp).atZone(zone))
 }

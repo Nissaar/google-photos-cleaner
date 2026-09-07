@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -43,6 +44,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.Check
 import xyz.photocleaner.vm.MonthEntry
+import xyz.photocleaner.vm.MonthFilter
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -110,7 +112,8 @@ fun MonthsScreen(
                             "Scanning — ${state.totalPhotos} photos so far, safe to close"
                         state.scanning -> "Checking for new photos…"
                         state.counts.isEmpty() -> "No photos found"
-                        else -> "${state.totalPhotos} photos across ${state.counts.size} months"
+                        state.photosLeft == 0 -> "All ${state.totalPhotos} photos reviewed"
+                        else -> "${state.photosLeft} of ${state.totalPhotos} photos left to review"
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -146,13 +149,52 @@ fun MonthsScreen(
             }
         }
 
+        // Filter first, so finished months are out of the way rather than merely
+        // badged — with a large library, scanning the grid for a badge is the work.
+        if (state.counts.isNotEmpty()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MonthFilter.entries.forEach { filter ->
+                    val count = when (filter) {
+                        MonthFilter.TO_REVIEW -> state.toReviewCount
+                        MonthFilter.DONE -> state.doneCount
+                        MonthFilter.ALL -> state.months.size
+                    }
+                    FilterChip(
+                        selected = state.filter == filter,
+                        onClick = { vm.setFilter(filter) },
+                        label = { Text("${filter.label} ($count)") },
+                    )
+                }
+            }
+        }
+
         if (state.counts.isEmpty() && state.scanning) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
+        } else if (state.visibleMonths.isEmpty() && state.counts.isNotEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    when (state.filter) {
+                        MonthFilter.TO_REVIEW ->
+                            "Every month has been reviewed.\nLong-press a month under " +
+                                "\"Done\" to go through it again."
+                        MonthFilter.DONE -> "No month has been fully reviewed yet."
+                        MonthFilter.ALL -> "No photos found."
+                    },
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(32.dp),
+                )
+            }
         } else {
             // Grouped by year so long libraries stay navigable.
-            val byYear = state.months.groupBy { it.month.year }
+            val byYear = state.visibleMonths.groupBy { it.month.year }
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 104.dp),
                 contentPadding = PaddingValues(16.dp),
