@@ -46,6 +46,9 @@ class AppViewModel : ViewModel() {
     val includeArchived: StateFlow<Boolean> =
         settings.includeArchived.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    val allowScreenshots: StateFlow<Boolean> =
+        settings.allowScreenshots.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     val pendingCount: StateFlow<Int> =
         repo.pendingDeleteCount().stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
@@ -81,6 +84,9 @@ class AppViewModel : ViewModel() {
     fun setSkipDecided(enabled: Boolean) = viewModelScope.launch { settings.setSkipDecided(enabled) }
     fun setIncludeArchived(enabled: Boolean) =
         viewModelScope.launch { settings.setIncludeArchived(enabled) }
+
+    fun setAllowScreenshots(enabled: Boolean) =
+        viewModelScope.launch { settings.setAllowScreenshots(enabled) }
 
     fun clearDecisions() = viewModelScope.launch { repo.clearAllDecisions() }
 

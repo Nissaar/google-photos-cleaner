@@ -35,7 +35,10 @@ import xyz.photocleaner.session.GPhotosSession
  *  - The right URL form varies by video, so [MediaItem.videoUrls] is tried in order
  *    and a playback failure advances to the next rather than giving up.
  */
-@OptIn(UnstableApi::class)
+// media3's UnstableApi is a Java opt-in marker, so this needs androidx's OptIn with
+// markerClass — Kotlin's `@OptIn(UnstableApi::class)` compiles but does not satisfy
+// the lint check, which is what the API is actually gated behind.
+@androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 @Composable
 fun VideoPlayer(
     item: MediaItem,

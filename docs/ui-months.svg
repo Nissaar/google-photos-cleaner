@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 660" width="360" height="660" role="img" aria-label="Illustration of the month picker screen">
+  <style>
+    .bg { fill: #0D0F12; }
+    .surf { fill: #16191D; }
+    .var { fill: #232830; }
+    .t { fill: #E8EAED; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .dim { fill: #B6BCC6; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .pri { fill: #6EA8FF; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .keep { fill: #2E9E5B; }
+    .del { fill: #E5484D; }
+    .out { stroke: #39404A; fill: none; }
+  </style>
+
+  <rect class="bg" width="360" height="660" rx="14"/>
+
+  <!-- Header -->
+  <text class="t" x="20" y="46" font-size="24" font-weight="600">Choose a month</text>
+  <text class="dim" x="20" y="68" font-size="13">1,240 of 20,431 photos left to review</text>
+
+  <!-- Header actions: refresh, review (badged), settings -->
+  <g transform="translate(258,34)">
+    <path class="out" stroke-width="1.6" d="M7 3a6 6 0 1 0 5.6 4"/>
+    <path fill="#B6BCC6" d="M12 0l2 5-5-.6z"/>
+  </g>
+  <g transform="translate(292,32)">
+    <path fill="#B6BCC6" d="M1 4h12v1.6H1zM2.4 7h9.2l-.9 9H3.3z"/>
+    <circle class="del" cx="14" cy="2" r="6.5"/>
+    <text x="14" y="4.6" font-size="8" font-weight="700" text-anchor="middle"
+          font-family="system-ui, sans-serif" fill="#FFFFFF">37</text>
+  </g>
+  <g transform="translate(326,34)">
+    <circle cx="7" cy="7" r="3" class="out" stroke-width="1.6"/>
+    <circle cx="7" cy="7" r="6.5" class="out" stroke-width="1.6" stroke-dasharray="2.4 2.4"/>
+  </g>
+
+  <!-- Filter chips -->
+  <g font-size="12">
+    <rect x="16" y="86" width="104" height="32" rx="16" fill="#6EA8FF"/>
+    <text x="68" y="106" text-anchor="middle" fill="#00274D" font-weight="600"
+          font-family="system-ui, sans-serif">To review (14)</text>
+
+    <rect x="128" y="86" width="80" height="32" rx="16" class="out" stroke-width="1"/>
+    <text class="dim" x="168" y="106" text-anchor="middle">Done (52)</text>
+
+    <rect x="216" y="86" width="70" height="32" rx="16" class="out" stroke-width="1"/>
+    <text class="dim" x="251" y="106" text-anchor="middle">All (66)</text>
+  </g>
+
+  <!-- Year 2024 -->
+  <text class="t" x="20" y="152" font-size="15" font-weight="600">2024</text>
+
+  <!-- Row 1: partly reviewed / untouched / untouched -->
+  <g>
+    <rect class="var" x="16" y="164" width="102" height="102" rx="14"/>
+    <text class="t" x="67" y="208" font-size="19" font-weight="600" text-anchor="middle"
+          font-family="system-ui, sans-serif">Jul</text>
+    <text class="dim" x="67" y="228" font-size="10" text-anchor="middle">28 left of 40</text>
+
+    <rect class="var" x="129" y="164" width="102" height="102" rx="14"/>
+    <text class="t" x="180" y="208" font-size="19" font-weight="600" text-anchor="middle"
+          font-family="system-ui, sans-serif">Jun</text>
+    <text class="dim" x="180" y="228" font-size="10" text-anchor="middle">312 photos</text>
+
+    <rect class="var" x="242" y="164" width="102" height="102" rx="14"/>
+    <text class="t" x="293" y="208" font-size="19" font-weight="600" text-anchor="middle"
+          font-family="system-ui, sans-serif">May</text>
+    <text class="dim" x="293" y="228" font-size="10" text-anchor="middle">87 photos</text>
+  </g>
+
+  <!-- Row 2: one fully reviewed (recedes, keeps a check) -->
+  <g>
+    <rect class="surf" x="16" y="277" width="102" height="102" rx="14"/>
+    <path class="keep" transform="translate(61,300)" d="M0 4.2l1.6-1.6 2.6 2.6L9.6 0 11.2 1.6 4.2 8.6z"/>
+    <text class="dim" x="67" y="332" font-size="19" font-weight="600" text-anchor="middle"
+          font-family="system-ui, sans-serif">Apr</text>
+    <text class="dim" x="67" y="351" font-size="10" text-anchor="middle">All reviewed</text>
+
+    <rect class="var" x="129" y="277" width="102" height="102" rx="14"/>
+    <text class="t" x="180" y="321" font-size="19" font-weight="600" text-anchor="middle"
+          font-family="system-ui, sans-serif">Mar</text>
+    <text class="dim" x="180" y="341" font-size="10" text-anchor="middle">154 photos</text>
+
+    <rect class="var" x="242" y="277" width="102" height="102" rx="14"/>
+    <text class="t" x="293" y="321" font-size="19" font-weight="600" text-anchor="middle"
+          font-family="system-ui, sans-serif">Feb</text>
+    <text class="dim" x="293" y="341" font-size="10" text-anchor="middle">41 photos</text>
+  </g>
+
+  <!-- Year 2023 -->
+  <text class="t" x="20" y="412" font-size="15" font-weight="600">2023</text>
+  <g>
+    <rect class="var" x="16" y="424" width="102" height="102" rx="14"/>
+    <text class="t" x="67" y="468" font-size="19" font-weight="600" text-anchor="middle"
+          font-family="system-ui, sans-serif">Dec</text>
+    <text class="dim" x="67" y="488" font-size="10" text-anchor="middle">508 photos</text>
+
+    <rect class="surf" x="129" y="424" width="102" height="102" rx="14"/>
+    <path class="keep" transform="translate(174,447)" d="M0 4.2l1.6-1.6 2.6 2.6L9.6 0 11.2 1.6 4.2 8.6z"/>
+    <text class="dim" x="180" y="479" font-size="19" font-weight="600" text-anchor="middle"
+          font-family="system-ui, sans-serif">Nov</text>
+    <text class="dim" x="180" y="498" font-size="10" text-anchor="middle">All reviewed</text>
+
+    <rect class="var" x="242" y="424" width="102" height="102" rx="14"/>
+    <text class="t" x="293" y="468" font-size="19" font-weight="600" text-anchor="middle"
+          font-family="system-ui, sans-serif">Oct</text>
+    <text class="dim" x="293" y="488" font-size="10" text-anchor="middle">96 photos</text>
+  </g>
+
+  <!-- Caption -->
+  <text class="dim" x="180" y="580" font-size="11" text-anchor="middle" opacity="0.8">
+    Long-press a month to review it again
+  </text>
+</svg>

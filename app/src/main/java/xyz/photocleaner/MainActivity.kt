@@ -48,12 +48,9 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Keep photos out of screenshots, screen recordings and the recent-apps
-        // thumbnail. This is someone's whole photo library on screen.
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE,
-        )
+        // Secure by default, before any content is drawn. RootScreen relaxes this only
+        // if the user has explicitly opted in, so there is no unprotected first frame.
+        setSecure(true)
 
         setContent {
             PhotoCleanerTheme {
@@ -71,10 +68,29 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    /**
+     * FLAG_SECURE keeps the library out of screenshots, screen recordings and the
+     * recent-apps thumbnail. It is also why bug-report screenshots come out blank,
+     * so it is user-controllable — defaulting to on.
+     */
+    private fun setSecure(secure: Boolean) {
+        if (secure) {
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE,
+            )
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
     @Composable
     private fun RootScreen(appVm: AppViewModel = viewModel()) {
         val lockEnabled by appVm.appLock.collectAsState()
+        val allowScreenshots by appVm.allowScreenshots.collectAsState()
         var unlocked by remember { mutableStateOf(false) }
+
+        LaunchedEffect(allowScreenshots) { setSecure(!allowScreenshots) }
 
         LaunchedEffect(lockEnabled) {
             if (!lockEnabled) unlocked = true

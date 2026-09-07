@@ -8,6 +8,17 @@ Nothing is stored on a server. There is no backend, no account, and no analytics
 
 ---
 
+## Interface
+
+> These are **illustrations of the layout**, not real screenshots. The app sets
+> `FLAG_SECURE` so a photo library cannot be captured, which makes screenshots come
+> out blank — turn on **Settings → Allow screenshots** to take real ones.
+
+| Pick a month | Review one at a time | Confirm before anything happens |
+|---|---|---|
+| <img src="docs/ui-months.svg" width="240" alt="Month picker with filter chips: To review, Done, All"> | <img src="docs/ui-swipe.svg" width="240" alt="Swipe deck with a card mid-drag showing a DELETE stamp"> | <img src="docs/ui-review.svg" width="240" alt="Grid of photos marked for deletion above a confirm button"> |
+| Filtered to what still needs work. Finished months move to **Done**, where a long-press reopens one. | Swipe left to delete, right to keep. Videos play in place. Undo steps back. | Verdicts stay on the phone until you confirm here. Trashed photos are recoverable for 60 days. |
+
 ## Why it is built this way
 
 The obvious approach — the official Google Photos API — cannot do this job.

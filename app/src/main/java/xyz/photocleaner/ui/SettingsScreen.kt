@@ -45,6 +45,7 @@ fun SettingsScreen(appVm: AppViewModel, onBack: () -> Unit, onSignedOut: () -> U
     val appLock by appVm.appLock.collectAsState()
     val skipDecided by appVm.skipDecided.collectAsState()
     val includeArchived by appVm.includeArchived.collectAsState()
+    val allowScreenshots by appVm.allowScreenshots.collectAsState()
     val kept by appVm.keptCount.collectAsState()
 
     var albumDraft by remember(albumName) { mutableStateOf(albumName) }
@@ -121,6 +122,13 @@ fun SettingsScreen(appVm: AppViewModel, onBack: () -> Unit, onSignedOut: () -> U
                 subtitle = "Ask for fingerprint, face or device PIN each time.",
                 checked = appLock,
                 onChange = appVm::setAppLock,
+            )
+            ToggleRow(
+                title = "Allow screenshots",
+                subtitle = "Off by default, which is why screenshots come out blank. " +
+                    "Turning it on also lets your photos appear in the app switcher.",
+                checked = allowScreenshots,
+                onChange = appVm::setAllowScreenshots,
             )
             InfoRow(
                 "Where your data lives",

@@ -35,6 +35,7 @@ class Settings(private val context: Context) {
         val SKIP_DECIDED = booleanPreferencesKey("skip_decided")
         val INCLUDE_ARCHIVED = booleanPreferencesKey("include_archived")
         val WAS_SIGNED_IN = booleanPreferencesKey("was_signed_in")
+        val ALLOW_SCREENSHOTS = booleanPreferencesKey("allow_screenshots")
     }
 
     companion object {
@@ -69,6 +70,18 @@ class Settings(private val context: Context) {
         context.dataStore.data.map { it[Keys.WAS_SIGNED_IN] ?: false }
 
     suspend fun setWasSignedIn(value: Boolean) = put(Keys.WAS_SIGNED_IN, value)
+
+    /**
+     * Whether to drop FLAG_SECURE so the screen can be captured.
+     *
+     * Off by default: the app puts an entire photo library on screen, which has no
+     * business appearing in screenshots or the recent-apps thumbnail. Turning it on
+     * is occasionally necessary — reporting a bug, or taking screenshots for docs.
+     */
+    val allowScreenshots: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.ALLOW_SCREENSHOTS] ?: false }
+
+    suspend fun setAllowScreenshots(value: Boolean) = put(Keys.ALLOW_SCREENSHOTS, value)
 
     suspend fun setMode(mode: CleanupMode) = put(Keys.MODE, mode.name)
     suspend fun setAlbumName(name: String) = put(Keys.ALBUM_NAME, name)
