@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!--
       INTERNET is the only permission this app requests.
@@ -11,6 +12,20 @@
       There is no backend: the only host this app ever talks to is Google's own.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+      androidx.media3-common declares ACCESS_NETWORK_STATE so its bandwidth meter can
+      seed bitrate estimates for adaptive streaming. This app plays one progressive
+      file at a time and never adapts, so it gains nothing from it.
+
+      Removing it is safe rather than merely tidy: media3 wraps getActiveNetworkInfo()
+      in a catch for SecurityException precisely so it degrades when the permission is
+      absent (verified in the 1.5.1 bytecode). Without this, adding video playback
+      would have quietly widened the app's permission set.
+    -->
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
 
     <application
         android:name=".App"
