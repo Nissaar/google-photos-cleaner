@@ -100,5 +100,6 @@ object Graph {
         settings.clear()
         AppDatabase.wipe(appContext)
         runCatching { appContext.cacheDir.resolve("image_cache").deleteRecursively() }
+        xyz.photocleaner.ui.ShareActions.clearCache(appContext)
     }
 }

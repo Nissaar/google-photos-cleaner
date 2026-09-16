@@ -97,6 +97,25 @@ class ParserTest {
     }
 
     @Test
+    fun `links to Google Photos by mediaKey, scoped to the signed-in account`() {
+        val item = Parser.parseMediaItem(parse(photoItem))!!
+
+        // The default account carries no /u/N prefix.
+        assertEquals(
+            "https://photos.google.com/photo/AF1QipMediaKey123",
+            item.googlePhotosUrl(),
+        )
+        // A secondary account must be addressed explicitly, or the link resolves
+        // against the wrong account and shows nothing.
+        assertEquals(
+            "https://photos.google.com/u/2/photo/AF1QipMediaKey123",
+            item.googlePhotosUrl(authUser = 2),
+        )
+        // mediaKey, never dedupKey: the two are not interchangeable.
+        assertFalse(item.googlePhotosUrl().contains(item.dedupKey))
+    }
+
+    @Test
     fun `detects video by presence of a duration`() {
         val photo = Parser.parseMediaItem(parse(photoItem))!!
         assertFalse(photo.isVideo)

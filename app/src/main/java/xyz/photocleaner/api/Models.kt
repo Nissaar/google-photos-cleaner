@@ -40,6 +40,18 @@ data class MediaItem(
         "$thumbBaseUrl=w$maxSize-h$maxSize-k-no?authuser=$authUser"
 
     /**
+     * This item's page in Google Photos.
+     *
+     * Addressed by [mediaKey], not [dedupKey] — the same distinction album operations
+     * rely on. The `/u/N/` prefix has to match the signed-in account, or the link
+     * opens against the wrong one.
+     */
+    fun googlePhotosUrl(authUser: Int = 0): String {
+        val account = if (authUser > 0) "/u/$authUser" else ""
+        return "https://photos.google.com$account/photo/$mediaKey"
+    }
+
+    /**
      * Playable stream URLs for a video, best first.
      *
      * `=dv` asks for the original file, which is the documented way to get video bytes

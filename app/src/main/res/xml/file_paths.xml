@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!--
+      The only thing ever exposed: a single image written for an in-flight share,
+      in the app's private cache. Nothing else in the app's storage is reachable
+      through the provider — in particular not the encrypted decisions database.
+    -->
+    <cache-path name="shared_media" path="share/" />
+</paths>

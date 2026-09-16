@@ -24,7 +24,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -221,6 +223,8 @@ private fun PhotoDeck(
 @Composable
 private fun PhotoCard(item: MediaItem, modifier: Modifier) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val authUser = xyz.photocleaner.Graph.session.authUser
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -244,7 +248,6 @@ private fun PhotoCard(item: MediaItem, modifier: Modifier) {
                 var loadError by remember(item.dedupKey) { mutableStateOf<String?>(null) }
                 var loading by remember(item.dedupKey) { mutableStateOf(true) }
                 var playing by remember(item.dedupKey) { mutableStateOf(false) }
-                val authUser = xyz.photocleaner.Graph.session.authUser
 
                 if (item.isVideo && playing) {
                     VideoPlayer(
@@ -335,6 +338,31 @@ private fun PhotoCard(item: MediaItem, modifier: Modifier) {
                         "%d:%02d".format(ms / 60000, (ms / 1000) % 60),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                // For the photo you would rather keep than judge: send it to someone,
+                // or open it where you can actually sit with it.
+                IconButton(
+                    onClick = { scope.launch { ShareActions.share(context, item, authUser) } },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Share,
+                        contentDescription = "Share",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+                IconButton(
+                    onClick = { ShareActions.openInGooglePhotos(context, item, authUser) },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(
+                        Icons.Default.OpenInNew,
+                        contentDescription = "Open in Google Photos",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(19.dp),
                     )
                 }
             }
