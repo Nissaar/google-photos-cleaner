@@ -44,15 +44,17 @@ fun VideoPlayer(
     item: MediaItem,
     authUser: Int,
     modifier: Modifier = Modifier,
+    /** Bumping this rebuilds the player from the first URL form, for a manual retry. */
+    retryKey: Int = 0,
     onFailed: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val urls = remember(item.dedupKey, authUser) { item.videoUrls(authUser) }
 
     // Which URL form we are currently attempting.
-    var attempt by remember(item.dedupKey) { mutableStateOf(0) }
+    var attempt by remember(item.dedupKey, retryKey) { mutableStateOf(0) }
 
-    val player = remember(item.dedupKey, attempt) {
+    val player = remember(item.dedupKey, attempt, retryKey) {
         val url = urls[attempt.coerceIn(urls.indices)]
 
         val http = DefaultHttpDataSource.Factory()

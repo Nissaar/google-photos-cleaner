@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.CircularProgressIndicator
@@ -122,7 +123,13 @@ fun SwipeScreen(
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             when {
                 state.loading -> LoadingBlock(state.loadedCount)
-                state.error != null -> MessageBlock(state.error!!, "Go back", onBack)
+                state.error != null -> MessageBlock(
+                    state.error!!,
+                    "Try again",
+                    vm::retry,
+                    secondaryLabel = "Go back",
+                    onSecondary = onBack,
+                )
                 state.isEmpty -> MessageBlock(
                     "You have already been through ${month.format(MONTH_FMT)}.",
                     "Pick another month",
@@ -248,12 +255,17 @@ private fun PhotoCard(item: MediaItem, modifier: Modifier) {
                 var loadError by remember(item.dedupKey) { mutableStateOf<String?>(null) }
                 var loading by remember(item.dedupKey) { mutableStateOf(true) }
                 var playing by remember(item.dedupKey) { mutableStateOf(false) }
+                // Bumped by the retry button. Part of the image request and the
+                // player's keys, so incrementing it forces a genuinely fresh load
+                // rather than replaying the failed one.
+                var retryKey by remember(item.dedupKey) { mutableStateOf(0) }
 
                 if (item.isVideo && playing) {
                     VideoPlayer(
                         item = item,
                         authUser = authUser,
                         modifier = Modifier.fillMaxSize(),
+                        retryKey = retryKey,
                         onFailed = { code ->
                             // Fall back to the still frame rather than a black rectangle.
                             playing = false
@@ -264,6 +276,9 @@ private fun PhotoCard(item: MediaItem, modifier: Modifier) {
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(item.previewUrl(authUser = authUser))
+                            // Part of the request's cache key, so a retry re-fetches
+                            // instead of resolving to the same failed result.
+                            .setParameter("retry", retryKey)
                             .crossfade(true)
                             .build(),
                         contentDescription = null,
@@ -301,6 +316,25 @@ private fun PhotoCard(item: MediaItem, modifier: Modifier) {
                                 style = MaterialTheme.typography.labelSmall,
                                 textAlign = TextAlign.Center,
                             )
+                            Spacer(Modifier.height(10.dp))
+                            // A timeout should cost a tap, not your place in the deck.
+                            TextButton(
+                                onClick = {
+                                    loadError = null
+                                    loading = true
+                                    retryKey += 1
+                                    if (item.isVideo) playing = true
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(17.dp),
+                                )
+                                Spacer(Modifier.size(6.dp))
+                                Text("Try again", color = Color.White)
+                            }
                         }
                     }
 

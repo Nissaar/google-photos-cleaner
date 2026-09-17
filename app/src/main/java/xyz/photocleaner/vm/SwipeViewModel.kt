@@ -66,6 +66,17 @@ class SwipeViewModel : ViewModel() {
         startLoad(month, resetFirst = true)
     }
 
+    /**
+     * Re-runs the month load after a failure.
+     *
+     * Loading a month is many paginated calls, so one timeout fails the whole thing.
+     * Retrying starts it over; no verdicts are lost, because none were recorded.
+     */
+    fun retry() {
+        val month = _state.value.month ?: return
+        startLoad(month)
+    }
+
     private fun startLoad(month: YearMonth, resetFirst: Boolean = false) {
         job?.cancel()
         job = viewModelScope.launch {
