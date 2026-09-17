@@ -27,6 +27,15 @@
         android:name="android.permission.ACCESS_NETWORK_STATE"
         tools:node="remove" />
 
+    <!--
+      Android 11+ hides other installed packages by default, so naming Google Photos
+      in an intent silently fails without declaring it here. This is the narrow form:
+      one named package, not the QUERY_ALL_PACKAGES permission.
+    -->
+    <queries>
+        <package android:name="com.google.android.apps.photos" />
+    </queries>
+
     <application
         android:name=".App"
         android:allowBackup="false"

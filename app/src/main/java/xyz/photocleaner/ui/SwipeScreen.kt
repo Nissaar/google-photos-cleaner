@@ -232,6 +232,10 @@ private fun PhotoCard(item: MediaItem, modifier: Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val authUser = xyz.photocleaner.Graph.session.authUser
+
+    // Preparing a share downloads the file first, which for a video is worth showing.
+    var sharing by remember(item.dedupKey) { mutableStateOf<Float?>(null) }
+    var shareError by remember(item.dedupKey) { mutableStateOf<String?>(null) }
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -378,18 +382,44 @@ private fun PhotoCard(item: MediaItem, modifier: Modifier) {
                 // For the photo you would rather keep than judge: send it to someone,
                 // or open it where you can actually sit with it.
                 IconButton(
-                    onClick = { scope.launch { ShareActions.share(context, item, authUser) } },
+                    onClick = {
+                        if (sharing == null) {
+                            scope.launch {
+                                sharing = 0f
+                                shareError = null
+                                val result = ShareActions.share(context, item, authUser) { p ->
+                                    sharing = p.fraction
+                                }
+                                sharing = null
+                                shareError = result.exceptionOrNull()?.let {
+                                    it.message ?: "Could not share this one"
+                                }
+                            }
+                        }
+                    },
+                    enabled = sharing == null,
                     modifier = Modifier.size(36.dp),
                 ) {
-                    Icon(
-                        Icons.Default.Share,
-                        contentDescription = "Share",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(19.dp),
-                    )
+                    if (sharing != null) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(17.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.Share,
+                            contentDescription = "Share",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(19.dp),
+                        )
+                    }
                 }
                 IconButton(
-                    onClick = { ShareActions.openInGooglePhotos(context, item, authUser) },
+                    onClick = {
+                        val opened = ShareActions.openInGooglePhotos(context, item, authUser)
+                        if (!opened) shareError = "Nothing on this phone can open that link"
+                    },
                     modifier = Modifier.size(36.dp),
                 ) {
                     Icon(
@@ -399,6 +429,27 @@ private fun PhotoCard(item: MediaItem, modifier: Modifier) {
                         modifier = Modifier.size(19.dp),
                     )
                 }
+            }
+
+            // Downloading a video for sharing is slow enough to need feedback.
+            sharing?.let { fraction ->
+                if (fraction > 0f) {
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier.fillMaxWidth().height(2.dp),
+                    )
+                } else {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
+                }
+            }
+
+            shareError?.let { message ->
+                Text(
+                    message,
+                    color = Color(0xFFFF8A80),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
+                )
             }
         }
     }

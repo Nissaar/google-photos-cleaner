@@ -36,25 +36,8 @@ class App : Application(), ImageLoaderFactory {
      * copied into app storage, logged, or sent anywhere else.
      */
     override fun newImageLoader(): ImageLoader {
-        val client = OkHttpClient.Builder()
-            .addInterceptor { chain ->
-                val request = chain.request()
-                val builder = request.newBuilder()
-                    .header("User-Agent", GPhotosSession.USER_AGENT)
-
-                if (isGooglePhotoHost(request.url.host)) {
-                    val cookie = runCatching {
-                        CookieManager.getInstance().getCookie(request.url.toString())
-                    }.getOrNull()
-                    if (!cookie.isNullOrEmpty()) builder.header("Cookie", cookie)
-                    builder.header("Referer", "${GPhotosSession.ORIGIN}/")
-                }
-                chain.proceed(builder.build())
-            }
-            .build()
-
         return ImageLoader.Builder(this)
-            .okHttpClient(client)
+            .okHttpClient(Graph.httpClient)
             .crossfade(true)
             // Thumbnails are cached on disk so re-reviewing a month is not a re-download.
             // This lives in the app's private storage and is cleared on sign-out.
@@ -67,10 +50,6 @@ class App : Application(), ImageLoaderFactory {
             .build()
     }
 
-    private fun isGooglePhotoHost(host: String): Boolean =
-        host.endsWith(".googleusercontent.com") ||
-            host.endsWith(".ggpht.com") ||
-            host.endsWith(".google.com")
 }
 
 /**
@@ -81,6 +60,38 @@ class App : Application(), ImageLoaderFactory {
  */
 object Graph {
     private lateinit var appContext: Context
+
+    /**
+     * Shared HTTP client for everything that fetches media from Google.
+     *
+     * Thumbnails and video streams on Google's media hosts are private to the
+     * account: a browser loads them only because it attaches the session cookie
+     * automatically. Requests to Google hosts — and only those — carry the cookie
+     * from the WebView jar, read at request time and never stored by this app.
+     */
+    val httpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val builder = request.newBuilder()
+                    .header("User-Agent", GPhotosSession.USER_AGENT)
+
+                if (isGoogleMediaHost(request.url.host)) {
+                    val cookie = runCatching {
+                        CookieManager.getInstance().getCookie(request.url.toString())
+                    }.getOrNull()
+                    if (!cookie.isNullOrEmpty()) builder.header("Cookie", cookie)
+                    builder.header("Referer", "${GPhotosSession.ORIGIN}/")
+                }
+                chain.proceed(builder.build())
+            }
+            .build()
+    }
+
+    private fun isGoogleMediaHost(host: String): Boolean =
+        host.endsWith(".googleusercontent.com") ||
+            host.endsWith(".ggpht.com") ||
+            host.endsWith(".google.com")
 
     val session: GPhotosSession by lazy { GPhotosSession(appContext) }
     val api: PhotosApi by lazy { PhotosApi(session) }
