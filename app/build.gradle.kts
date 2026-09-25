@@ -112,4 +112,5 @@ dependencies {
     testImplementation(libs.junit)
     // Real SQLite on the JVM, so migrations are tested against actual databases.
     testImplementation(libs.sqlite.jdbc)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

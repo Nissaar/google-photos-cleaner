@@ -19,6 +19,8 @@ datastore = "1.1.1"
 serialization = "1.7.3"
 junit = "4.13.2"
 sqliteJdbc = "3.46.1.3"
+# Matches the kotlinx-coroutines-core version the AndroidX libraries resolve to.
+coroutinesTest = "1.8.1"
 androidxJunit = "1.2.1"
 
 [libraries]
@@ -51,6 +53,7 @@ media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasourc
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 sqlite-jdbc = { group = "org.xerial", name = "sqlite-jdbc", version.ref = "sqliteJdbc" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxJunit" }
 
 [plugins]

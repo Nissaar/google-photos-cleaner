@@ -11,6 +11,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import xyz.photocleaner.Graph
 import xyz.photocleaner.api.MediaItem
+import xyz.photocleaner.data.CleanupRepository
 import xyz.photocleaner.data.Verdict
 import java.time.YearMonth
 import kotlin.coroutines.cancellation.CancellationException
@@ -43,9 +44,11 @@ data class SwipeState(
  * Google here — nothing leaves the device until the review screen is confirmed.
  * That keeps swiping fast and, more importantly, undoable.
  */
-class SwipeViewModel : ViewModel() {
-
-    private val repo = Graph.repository
+class SwipeViewModel(
+    // A parameter only so tests can supply one. With a default for every parameter,
+    // Kotlin still generates the no-argument constructor viewModel() needs.
+    private val repo: CleanupRepository = Graph.repository,
+) : ViewModel() {
 
     private val _state = MutableStateFlow(SwipeState())
     val state: StateFlow<SwipeState> = _state.asStateFlow()
