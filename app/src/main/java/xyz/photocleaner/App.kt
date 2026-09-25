@@ -16,6 +16,7 @@ import xyz.photocleaner.api.PhotosApi
 import xyz.photocleaner.data.AppDatabase
 import xyz.photocleaner.data.CleanupRepository
 import xyz.photocleaner.data.Settings
+import xyz.photocleaner.net.GoogleSessionInterceptor
 import xyz.photocleaner.session.GPhotosSession
 import java.io.File
 
@@ -69,36 +70,24 @@ object Graph {
     private lateinit var appContext: Context
 
     /**
-     * Shared HTTP client for everything that fetches media from Google.
+     * Shared HTTP client for everything that fetches media from Google: images,
+     * video playback and video downloads for sharing.
      *
      * Thumbnails and video streams on Google's media hosts are private to the
      * account: a browser loads them only because it attaches the session cookie
      * automatically. Requests to Google hosts — and only those — carry the cookie
      * from the WebView jar, read at request time and never stored by this app.
+     * See [GoogleSessionInterceptor] for why it must be a network interceptor.
      */
     val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .addInterceptor { chain ->
-                val request = chain.request()
-                val builder = request.newBuilder()
-                    .header("User-Agent", GPhotosSession.USER_AGENT)
-
-                if (isGoogleMediaHost(request.url.host)) {
-                    val cookie = runCatching {
-                        CookieManager.getInstance().getCookie(request.url.toString())
-                    }.getOrNull()
-                    if (!cookie.isNullOrEmpty()) builder.header("Cookie", cookie)
-                    builder.header("Referer", "${GPhotosSession.ORIGIN}/")
-                }
-                chain.proceed(builder.build())
-            }
+            .addNetworkInterceptor(
+                GoogleSessionInterceptor { url ->
+                    runCatching { CookieManager.getInstance().getCookie(url) }.getOrNull()
+                },
+            )
             .build()
     }
-
-    private fun isGoogleMediaHost(host: String): Boolean =
-        host.endsWith(".googleusercontent.com") ||
-            host.endsWith(".ggpht.com") ||
-            host.endsWith(".google.com")
 
     /**
      * For work that must outlive the screen that started it. A confirmed delete runs
