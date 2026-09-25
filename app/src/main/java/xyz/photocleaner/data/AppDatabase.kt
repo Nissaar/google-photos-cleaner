@@ -28,8 +28,13 @@ class Converters {
  */
 object Migrations {
 
-    /** v4 records how each applied item was carried out: trash or album. */
+    /**
+     * v4 records how each applied item was carried out (trash or album), and adds a
+     * table for recounting month tallies without disturbing the ones on screen.
+     */
     internal val SQL_3_4 = listOf(
+        "CREATE TABLE IF NOT EXISTS `month_counts_recount` " +
+            "(`yearMonth` TEXT NOT NULL, `count` INTEGER NOT NULL, PRIMARY KEY(`yearMonth`))",
         "ALTER TABLE decisions ADD COLUMN appliedMode TEXT",
         // Before v4 the two modes left identical rows. Label them as trash, which is
         // exactly how every earlier version treated them, so nothing changes on upgrade.
@@ -44,7 +49,7 @@ object Migrations {
 }
 
 @Database(
-    entities = [Decision::class, MonthCount::class, ScanState::class],
+    entities = [Decision::class, MonthCount::class, ScanState::class, RecountMonth::class],
     version = 4,
     exportSchema = true,
 )

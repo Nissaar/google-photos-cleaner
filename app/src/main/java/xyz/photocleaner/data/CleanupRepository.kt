@@ -126,24 +126,76 @@ class CleanupRepository(
         zone: ZoneId = ZoneId.systemDefault(),
         onProgress: (Int) -> Unit = {},
     ) {
+        if (full) {
+            indexDao.clearMonthCounts()
+            indexDao.clearRecountCounts()
+            indexDao.clearScanState()
+            // A full rescan produces correct tallies itself, so no recount is owed.
+            settings.setRecountDone()
+        }
+        walk(IndexTarget.LIVE, zone, onProgress)
+    }
+
+    /**
+     * True while tallies saved by an older version still need rebuilding.
+     *
+     * Before interrupted syncs were fixed, one could double a library's counts. Only
+     * an index built by those versions can be affected; with nothing counted yet
+     * there is nothing to repair, and the flag is settled at once.
+     */
+    suspend fun recountPending(): Boolean {
+        if (settings.recountDone.first()) return false
+        val anything = indexDao.scanState() != null || indexDao.scanState(ScanState.RECOUNT) != null
+        if (!anything) settings.setRecountDone()
+        return anything
+    }
+
+    /**
+     * Rebuilds every month tally from scratch, without disturbing the grid.
+     *
+     * Counts go into their own table, saved per page so an interrupted recount resumes
+     * where it stopped, and replace the old ones in a single transaction at the end.
+     * Verdicts are never touched: this only ever concerns the month totals.
+     */
+    suspend fun recount(zone: ZoneId = ZoneId.systemDefault(), onProgress: (Int) -> Unit = {}) {
+        val result = walk(IndexTarget.RECOUNT, zone, onProgress) ?: return
+        indexDao.promoteRecount(result.copy(id = ScanState.SINGLETON, complete = true))
+        settings.setRecountDone()
+    }
+
+    /** Which tallies a walk reads from and saves to. */
+    private enum class IndexTarget(val stateId: Int) {
+        LIVE(ScanState.SINGLETON),
+        RECOUNT(ScanState.RECOUNT),
+    }
+
+    /**
+     * Walks the timeline into [target]. Returns the final scan state when the walk
+     * got to the end, or null if it stopped short (it can then be resumed).
+     */
+    private suspend fun walk(
+        target: IndexTarget,
+        zone: ZoneId,
+        onProgress: (Int) -> Unit,
+    ): ScanState? {
         val source = if (settings.includeArchived.first()) {
             PhotosApi.Source.BOTH
         } else {
             PhotosApi.Source.LIBRARY
         }
 
-        if (full) {
-            indexDao.clearMonthCounts()
-            indexDao.clearScanState()
-        }
-        val previous = if (full) null else indexDao.scanState()
+        val previous = indexDao.scanState(target.stateId)
 
         val resuming = previous != null && !previous.complete && previous.resumeTimestamp != null
+        // A recount is never complete until it is promoted, so it is never incremental.
         val incremental = previous != null && previous.complete
 
         // Seed from what is already stored so a resumed run keeps its earlier tallies.
         val counts = LinkedHashMap<String, Int>()
-        indexDao.monthCounts().forEach { counts[it.yearMonth] = it.count }
+        when (target) {
+            IndexTarget.LIVE -> indexDao.monthCounts().forEach { counts[it.yearMonth] = it.count }
+            IndexTarget.RECOUNT -> indexDao.recountCounts().forEach { counts[it.yearMonth] = it.count }
+        }
         var total = counts.values.sum()
 
         // An incremental run stops once it reaches ground already covered.
@@ -159,6 +211,30 @@ class CleanupRepository(
         var firstRequest = true
         var pages = 0
         var finished = false
+
+        fun state(complete: Boolean) = newest?.let {
+            ScanState(
+                id = target.stateId,
+                newestTimestamp = it,
+                resumeTimestamp = lastTimestamp,
+                resumeKey = lastKey,
+                complete = complete,
+                scannedAt = System.currentTimeMillis(),
+            )
+        }
+
+        suspend fun save(complete: Boolean) {
+            when (target) {
+                IndexTarget.LIVE -> indexDao.saveIndex(
+                    counts.map { MonthCount(it.key, it.value) },
+                    state(complete),
+                )
+                IndexTarget.RECOUNT -> indexDao.saveRecount(
+                    counts.map { RecountMonth(it.key, it.value) },
+                    state(complete),
+                )
+            }
+        }
 
         while (pages++ < MAX_SCAN_PAGES) {
             val page = api.getItemsByTakenDate(
@@ -194,7 +270,7 @@ class CleanupRepository(
             skipUntilKey = null
             firstRequest = false
 
-            if (!incremental) saveProgress(counts, newest, lastTimestamp, lastKey, complete = false)
+            if (!incremental) save(complete = false)
             onProgress(total)
 
             if (reachedKnown) {
@@ -209,29 +285,10 @@ class CleanupRepository(
         }
 
         // An unfinished incremental run is dropped whole; the next one redoes it.
-        if (incremental && !finished) return
-        saveProgress(counts, newest, lastTimestamp, lastKey, complete = finished)
-    }
-
-    private suspend fun saveProgress(
-        counts: Map<String, Int>,
-        newest: Long?,
-        resumeTimestamp: Long?,
-        resumeKey: String?,
-        complete: Boolean,
-    ) {
-        indexDao.saveIndex(
-            counts = counts.map { MonthCount(it.key, it.value) },
-            state = newest?.let {
-                ScanState(
-                    newestTimestamp = it,
-                    resumeTimestamp = resumeTimestamp,
-                    resumeKey = resumeKey,
-                    complete = complete,
-                    scannedAt = System.currentTimeMillis(),
-                )
-            },
-        )
+        if (incremental && !finished) return null
+        // A recount is only ever saved as in progress; promoting it is what completes it.
+        save(complete = finished && target == IndexTarget.LIVE)
+        return if (finished) state(complete = true) else null
     }
 
     /**
@@ -256,6 +313,19 @@ class CleanupRepository(
             MonthCount(ym, (base + delta * n).coerceAtLeast(0))
         }
         if (updated.isNotEmpty()) indexDao.upsertMonthCounts(updated)
+
+        // A recount in progress has already counted everything newer than where it has
+        // reached. Those items must move with the live tallies, or promoting the
+        // recount would bring back photos just sent to the trash (or drop restored ones).
+        val recountAt = indexDao.scanState(ScanState.RECOUNT)?.resumeTimestamp ?: return
+        val passed = decisions.filter { it.takenAt >= recountAt }.groupingBy {
+            YearMonth.from(java.time.Instant.ofEpochMilli(it.takenAt).atZone(zone)).toString()
+        }.eachCount()
+        if (passed.isEmpty()) return
+        val draft = indexDao.recountCounts().associate { it.yearMonth to it.count }
+        indexDao.upsertRecountCounts(
+            passed.map { (ym, n) -> RecountMonth(ym, ((draft[ym] ?: 0) + delta * n).coerceAtLeast(0)) },
+        )
     }
 
     /**

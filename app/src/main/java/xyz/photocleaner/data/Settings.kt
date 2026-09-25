@@ -36,6 +36,7 @@ class Settings(private val context: Context) {
         val INCLUDE_ARCHIVED = booleanPreferencesKey("include_archived")
         val WAS_SIGNED_IN = booleanPreferencesKey("was_signed_in")
         val ALLOW_SCREENSHOTS = booleanPreferencesKey("allow_screenshots")
+        val RECOUNT_V4_DONE = booleanPreferencesKey("recount_v4_done")
     }
 
     companion object {
@@ -82,6 +83,15 @@ class Settings(private val context: Context) {
         context.dataStore.data.map { it[Keys.ALLOW_SCREENSHOTS] ?: false }
 
     suspend fun setAllowScreenshots(value: Boolean) = put(Keys.ALLOW_SCREENSHOTS, value)
+
+    /**
+     * Whether month tallies have been rebuilt since the fix for interrupted syncs
+     * double-counting. Tallies saved before it may be inflated; see
+     * [CleanupRepository.recount].
+     */
+    val recountDone: Flow<Boolean> = context.dataStore.data.map { it[Keys.RECOUNT_V4_DONE] ?: false }
+
+    suspend fun setRecountDone() = put(Keys.RECOUNT_V4_DONE, true)
 
     suspend fun setMode(mode: CleanupMode) = put(Keys.MODE, mode.name)
     suspend fun setAlbumName(name: String) = put(Keys.ALBUM_NAME, name)

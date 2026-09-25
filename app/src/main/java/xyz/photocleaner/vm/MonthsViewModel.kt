@@ -120,12 +120,19 @@ class MonthsViewModel : ViewModel() {
 
         job?.cancel()
         job = viewModelScope.launch {
+            // Tallies saved by an older version may be inflated. Rebuilding them takes
+            // this sync's place: it reads everything, so nothing new is missed, and the
+            // grid keeps its current numbers until the rebuilt ones replace them.
+            val recount = !full && repo.recountPending()
             // A resumed first pass is still a first pass as far as the user is concerned.
-            val first = full || repo.needsInitialScan() || repo.scanIncomplete()
+            val first = !recount && (full || repo.needsInitialScan() || repo.scanIncomplete())
             _state.value = _state.value.copy(scanning = true, initialScan = first, error = null)
             try {
-                repo.refreshMonthCounts(full = full) { found ->
-                    _state.value = _state.value.copy(newFound = found)
+                val onFound = { found: Int -> _state.value = _state.value.copy(newFound = found) }
+                if (recount) {
+                    repo.recount(onProgress = onFound)
+                } else {
+                    repo.refreshMonthCounts(full = full, onProgress = onFound)
                 }
                 _state.value = _state.value.copy(scanning = false, initialScan = false, newFound = 0)
             } catch (e: CancellationException) {
