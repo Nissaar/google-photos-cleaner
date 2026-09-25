@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import xyz.photocleaner.Graph
 import xyz.photocleaner.api.MediaItem
 import xyz.photocleaner.data.Verdict
@@ -48,6 +50,7 @@ class SwipeViewModel : ViewModel() {
     val state: StateFlow<SwipeState> = _state.asStateFlow()
 
     private var job: Job? = null
+    private val writes = Mutex()
 
     fun load(month: YearMonth) {
         if (_state.value.month == month && _state.value.items.isNotEmpty()) return
@@ -96,13 +99,18 @@ class SwipeViewModel : ViewModel() {
         }
     }
 
-    fun keep() = decide(Verdict.KEEP)
+    /**
+     * Verdicts name the photo they are for. A swipe's fly-off animation finishes
+     * after a delay, and by then a button tap may already have moved the deck on —
+     * acting on "whatever is current" would judge a photo nobody looked at.
+     */
+    fun keep(dedupKey: String) = decide(dedupKey, Verdict.KEEP)
 
-    fun delete() = decide(Verdict.DELETE)
+    fun delete(dedupKey: String) = decide(dedupKey, Verdict.DELETE)
 
-    private fun decide(verdict: Verdict) {
+    private fun decide(dedupKey: String, verdict: Verdict) {
         val s = _state.value
-        val item = s.current ?: return
+        val item = s.current?.takeIf { it.dedupKey == dedupKey } ?: return
 
         // Advance the UI immediately; persistence follows. The deck must never feel
         // like it is waiting on the database.
@@ -112,7 +120,7 @@ class SwipeViewModel : ViewModel() {
             deletedThisSession = s.deletedThisSession + if (verdict == Verdict.DELETE) 1 else 0,
             history = s.history + (item to verdict),
         )
-        viewModelScope.launch { repo.record(item, verdict) }
+        persist { repo.record(item, verdict) }
     }
 
     /** Steps back one photo and forgets the verdict that was given. */
@@ -128,7 +136,17 @@ class SwipeViewModel : ViewModel() {
                 .coerceAtLeast(0),
             history = s.history.dropLast(1),
         )
-        viewModelScope.launch { repo.undo(item.dedupKey) }
+        persist { repo.undo(item.dedupKey) }
+    }
+
+    /**
+     * Runs deck writes one at a time, in the order they were made. Launched
+     * independently, a quick undo could delete the row before its insert landed,
+     * leaving a verdict the screen says was taken back. The mutex is fair, and
+     * viewModelScope starts each launch immediately, so queue order is call order.
+     */
+    private fun persist(write: suspend () -> Unit) {
+        viewModelScope.launch { writes.withLock { write() } }
     }
 
     override fun onCleared() {
