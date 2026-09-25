@@ -34,10 +34,10 @@ data class MediaItem(
      * Photos URL), otherwise the image belongs to a different signed-in account.
      */
     fun thumbUrl(width: Int, height: Int, authUser: Int = 0): String =
-        "$thumbBaseUrl=w$width-h$height-k-no?authuser=$authUser"
+        thumbnailUrl(thumbBaseUrl, width, height, authUser)
 
     fun previewUrl(maxSize: Int = 1600, authUser: Int = 0): String =
-        "$thumbBaseUrl=w$maxSize-h$maxSize-k-no?authuser=$authUser"
+        thumbnailUrl(thumbBaseUrl, maxSize, maxSize, authUser)
 
     /**
      * This item's page in Google Photos.
@@ -69,6 +69,13 @@ data class MediaItem(
         YearMonth.from(Instant.ofEpochMilli(timestamp).atZone(zone))
 }
 
+/**
+ * A sized thumbnail URL from Google's base URL. See [MediaItem.thumbUrl] for what
+ * the parameters do; kept in one place so every screen asks for images the same way.
+ */
+fun thumbnailUrl(baseUrl: String, width: Int, height: Int, authUser: Int): String =
+    "$baseUrl=w$width-h$height-k-no?authuser=$authUser"
+
 /** One page of the library timeline. */
 data class TimelinePage(
     val items: List<MediaItem>,
@@ -76,7 +83,9 @@ data class TimelinePage(
     val lastItemTimestamp: Long?,
 )
 
-data class StorageQuota(
-    val usedBytes: Long,
-    val totalBytes: Long,
+/** One page of the album list, as (mediaKey, title) pairs. */
+data class AlbumPage(
+    val albums: List<Pair<String, String>>,
+    val nextPageId: String?,
 )
+

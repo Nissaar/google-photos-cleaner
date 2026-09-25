@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import xyz.photocleaner.Graph
 import java.time.YearMonth
+import kotlin.coroutines.cancellation.CancellationException
 
 /** One row of the month grid: how many photos it holds and how many you have judged. */
 data class MonthEntry(
@@ -109,23 +110,35 @@ class MonthsViewModel : ViewModel() {
 
     /**
      * Updates the index. Incremental by default; [full] re-counts everything, which is
-     * how the user corrects drift after deleting photos elsewhere.
+     * how the user corrects drift after deleting photos elsewhere. [retry] re-runs a
+     * sync that failed, without the full rescan's cost of re-reading everything.
      */
-    fun sync(full: Boolean = false) {
+    fun sync(full: Boolean = false, retry: Boolean = false) {
         if (_state.value.scanning) return
-        if (syncedThisSession && !full) return
+        if (syncedThisSession && !full && !retry) return
         syncedThisSession = true
 
         job?.cancel()
         job = viewModelScope.launch {
+            // Tallies saved by an older version may be inflated. Rebuilding them takes
+            // this sync's place: it reads everything, so nothing new is missed, and the
+            // grid keeps its current numbers until the rebuilt ones replace them.
+            val recount = !full && repo.recountPending()
             // A resumed first pass is still a first pass as far as the user is concerned.
-            val first = full || repo.needsInitialScan() || repo.scanIncomplete()
+            val first = !recount && (full || repo.needsInitialScan() || repo.scanIncomplete())
             _state.value = _state.value.copy(scanning = true, initialScan = first, error = null)
             try {
-                repo.refreshMonthCounts(full = full) { found ->
-                    _state.value = _state.value.copy(newFound = found)
+                val onFound = { found: Int -> _state.value = _state.value.copy(newFound = found) }
+                if (recount) {
+                    repo.recount(onProgress = onFound)
+                } else {
+                    repo.refreshMonthCounts(full = full, onProgress = onFound)
                 }
                 _state.value = _state.value.copy(scanning = false, initialScan = false, newFound = 0)
+            } catch (e: CancellationException) {
+                // Superseded or cancelled on purpose — not an error to show, and the
+                // state now belongs to whichever run replaced this one.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     scanning = false,

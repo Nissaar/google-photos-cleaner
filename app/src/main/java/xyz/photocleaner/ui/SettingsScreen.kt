@@ -39,7 +39,7 @@ import xyz.photocleaner.data.CleanupMode
 import xyz.photocleaner.vm.AppViewModel
 
 @Composable
-fun SettingsScreen(appVm: AppViewModel, onBack: () -> Unit, onSignedOut: () -> Unit) {
+fun SettingsScreen(appVm: AppViewModel, onBack: () -> Unit) {
     val mode by appVm.mode.collectAsState()
     val albumName by appVm.albumName.collectAsState()
     val appLock by appVm.appLock.collectAsState()
@@ -120,7 +120,7 @@ fun SettingsScreen(appVm: AppViewModel, onBack: () -> Unit, onSignedOut: () -> U
             ToggleRow(
                 title = "Require unlock to open",
                 subtitle = "Ask for fingerprint, face or device PIN each time.",
-                checked = appLock,
+                checked = appLock == true,
                 onChange = appVm::setAppLock,
             )
             ToggleRow(
@@ -202,7 +202,7 @@ fun SettingsScreen(appVm: AppViewModel, onBack: () -> Unit, onSignedOut: () -> U
             confirmButton = {
                 TextButton(onClick = {
                     confirmWipe = false
-                    appVm.signOutAndWipe(onSignedOut)
+                    appVm.signOutAndWipe()
                 }) { Text("Erase") }
             },
             dismissButton = { TextButton(onClick = { confirmWipe = false }) { Text("Cancel") } },

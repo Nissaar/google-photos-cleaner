@@ -1,7 +1,6 @@
 package xyz.photocleaner.ui
 
 import android.view.ViewGroup
-import android.webkit.CookieManager
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -17,12 +16,12 @@ import androidx.media3.common.MediaItem as Media3MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import xyz.photocleaner.Graph
 import xyz.photocleaner.api.MediaItem
-import xyz.photocleaner.session.GPhotosSession
 
 /**
  * Inline video playback for the review deck.
@@ -30,8 +29,8 @@ import xyz.photocleaner.session.GPhotosSession
  * Judging a video from a single still frame is guesswork, so videos play in place.
  *
  * Two things make this work where a plain player would not:
- *  - Google's video URLs are private to the account, so the request carries the
- *    session cookie from the WebView jar, exactly as image loading does.
+ *  - Google's video URLs are private to the account, so playback goes through the
+ *    same HTTP client as image loading, which carries the session cookie.
  *  - The right URL form varies by video, so [MediaItem.videoUrls] is tried in order
  *    and a playback failure advances to the next rather than giving up.
  */
@@ -57,18 +56,9 @@ fun VideoPlayer(
     val player = remember(item.dedupKey, attempt, retryKey) {
         val url = urls[attempt.coerceIn(urls.indices)]
 
-        val http = DefaultHttpDataSource.Factory()
-            .setUserAgent(GPhotosSession.USER_AGENT)
-            .setAllowCrossProtocolRedirects(true)
-            .setDefaultRequestProperties(
-                buildMap {
-                    val cookie = runCatching {
-                        CookieManager.getInstance().getCookie(url)
-                    }.getOrNull()
-                    if (!cookie.isNullOrEmpty()) put("Cookie", cookie)
-                    put("Referer", "${GPhotosSession.ORIGIN}/")
-                },
-            )
+        // The shared client attaches the session cookie per hop, to Google hosts only,
+        // so a redirect can never carry it anywhere else.
+        val http = OkHttpDataSource.Factory(Graph.httpClient)
 
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))

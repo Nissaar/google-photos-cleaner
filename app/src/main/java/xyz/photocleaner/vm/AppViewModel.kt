@@ -37,8 +37,12 @@ class AppViewModel : ViewModel() {
     val albumName: StateFlow<String> =
         settings.albumName.stateIn(viewModelScope, SharingStarted.Eagerly, "To Be Deleted")
 
-    val appLock: StateFlow<Boolean> =
-        settings.appLock.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    /**
+     * Null until the stored value has been read. Treating "not loaded yet" as "off"
+     * is what once let the app open unlocked, so callers must wait for a real value.
+     */
+    val appLock: StateFlow<Boolean?> =
+        settings.appLock.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val skipDecided: StateFlow<Boolean> =
         settings.skipDecided.stateIn(viewModelScope, SharingStarted.Eagerly, true)
@@ -66,11 +70,11 @@ class AppViewModel : ViewModel() {
 
     private suspend fun warmSession() {
         val ready = session.ensureReady()
-        settings.setWasSignedIn(ready)
-    }
-
-    fun refreshSession() {
-        viewModelScope.launch { warmSession() }
+        // Only a confirmed sign-out forgets the session. Offline, the session is most
+        // likely still good, and the next launch should open on the library again.
+        if (ready || session.state.value == GPhotosSession.State.SIGNED_OUT) {
+            settings.setWasSignedIn(ready)
+        }
     }
 
     /** Called when the login WebView reports a signed-in Photos page. */
@@ -90,10 +94,8 @@ class AppViewModel : ViewModel() {
 
     fun clearDecisions() = viewModelScope.launch { repo.clearAllDecisions() }
 
-    fun signOutAndWipe(onDone: () -> Unit = {}) {
-        viewModelScope.launch {
-            Graph.wipeEverything()
-            onDone()
-        }
+    /** Erases everything, then restarts the app, so this call does not return to the UI. */
+    fun signOutAndWipe() {
+        viewModelScope.launch { Graph.wipeEverything() }
     }
 }

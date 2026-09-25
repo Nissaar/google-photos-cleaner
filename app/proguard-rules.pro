@@ -9,25 +9,10 @@
 -keep class net.sqlcipher.** { *; }
 -dontwarn net.zetetic.**
 
-# Room generates implementations reflectively at runtime.
--keep class * extends androidx.room.RoomDatabase { *; }
--keep @androidx.room.Entity class * { *; }
--dontwarn androidx.room.paging.**
-
-# kotlinx.serialization keeps its serializers in companion/synthetic members.
--keepattributes *Annotation*, InnerClasses
--dontnote kotlinx.serialization.**
--keepclassmembers class kotlinx.serialization.json.** {
-    *** Companion;
-}
--keepclasseswithmembers class kotlinx.serialization.json.** {
-    kotlinx.serialization.KSerializer serializer(...);
-}
+# Room and kotlinx.serialization ship their own consumer rules, and this app uses no
+# @Serializable classes, so neither needs anything here.
 
 # The legacy WebView bridge is called from JavaScript, so its methods must survive.
--keepclassmembers class xyz.photocleaner.session.GPhotosSession$LegacyBridge {
-    @android.webkit.JavascriptInterface <methods>;
-}
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
 }

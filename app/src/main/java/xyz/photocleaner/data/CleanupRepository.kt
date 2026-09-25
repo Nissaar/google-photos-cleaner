@@ -5,8 +5,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import xyz.photocleaner.api.MediaItem
 import xyz.photocleaner.api.PhotosApi
+import xyz.photocleaner.api.PhotosRemote
 import java.time.YearMonth
 import java.time.ZoneId
+import kotlin.coroutines.cancellation.CancellationException
 
 /** Outcome of applying pending verdicts. */
 data class ApplyResult(
@@ -14,6 +16,13 @@ data class ApplyResult(
     val succeeded: Int,
     val failed: Int,
     val albumName: String? = null,
+    val error: String? = null,
+)
+
+/** Outcome of restoring items from the trash. */
+data class RestoreResult(
+    val restored: Int,
+    val failed: Int,
     val error: String? = null,
 )
 
@@ -25,7 +34,7 @@ data class ApplyResult(
  * rather than silently marked done while still in the library.
  */
 class CleanupRepository(
-    private val api: PhotosApi,
+    private val api: PhotosRemote,
     private val dao: DecisionDao,
     private val indexDao: LibraryIndexDao,
     private val settings: Settings,
@@ -111,33 +120,90 @@ class CleanupRepository(
      *  - **resume** — pick a interrupted first pass back up where it stopped;
      *  - **incremental** — once complete, read only photos added since the last run.
      *
-     * Counts are written after *every page*. That is what makes the months appear as
-     * they are found, and what means closing the app mid-scan costs one page rather
-     * than the entire run.
+     * A first pass writes its counts after *every page*. That is what makes the months
+     * appear as they are found, and what means closing the app mid-scan costs one page
+     * rather than the entire run.
+     *
+     * An incremental run writes nothing until it has finished, then everything at once.
+     * Saving it page by page would store the index as incomplete, and an interrupted
+     * run would then be resumed as a first pass — walking the whole library again and
+     * adding every photo on top of the counts it already had.
      */
     suspend fun refreshMonthCounts(
         full: Boolean = false,
         zone: ZoneId = ZoneId.systemDefault(),
         onProgress: (Int) -> Unit = {},
     ) {
+        if (full) {
+            indexDao.clearMonthCounts()
+            indexDao.clearRecountCounts()
+            indexDao.clearScanState()
+            // A full rescan produces correct tallies itself, so no recount is owed.
+            settings.setRecountDone()
+        }
+        walk(IndexTarget.LIVE, zone, onProgress)
+    }
+
+    /**
+     * True while tallies saved by an older version still need rebuilding.
+     *
+     * Before interrupted syncs were fixed, one could double a library's counts. Only
+     * an index built by those versions can be affected; with nothing counted yet
+     * there is nothing to repair, and the flag is settled at once.
+     */
+    suspend fun recountPending(): Boolean {
+        if (settings.recountDone.first()) return false
+        val anything = indexDao.scanState() != null || indexDao.scanState(ScanState.RECOUNT) != null
+        if (!anything) settings.setRecountDone()
+        return anything
+    }
+
+    /**
+     * Rebuilds every month tally from scratch, without disturbing the grid.
+     *
+     * Counts go into their own table, saved per page so an interrupted recount resumes
+     * where it stopped, and replace the old ones in a single transaction at the end.
+     * Verdicts are never touched: this only ever concerns the month totals.
+     */
+    suspend fun recount(zone: ZoneId = ZoneId.systemDefault(), onProgress: (Int) -> Unit = {}) {
+        val result = walk(IndexTarget.RECOUNT, zone, onProgress) ?: return
+        indexDao.promoteRecount(result.copy(id = ScanState.SINGLETON, complete = true))
+        settings.setRecountDone()
+    }
+
+    /** Which tallies a walk reads from and saves to. */
+    private enum class IndexTarget(val stateId: Int) {
+        LIVE(ScanState.SINGLETON),
+        RECOUNT(ScanState.RECOUNT),
+    }
+
+    /**
+     * Walks the timeline into [target]. Returns the final scan state when the walk
+     * got to the end, or null if it stopped short (it can then be resumed).
+     */
+    private suspend fun walk(
+        target: IndexTarget,
+        zone: ZoneId,
+        onProgress: (Int) -> Unit,
+    ): ScanState? {
         val source = if (settings.includeArchived.first()) {
             PhotosApi.Source.BOTH
         } else {
             PhotosApi.Source.LIBRARY
         }
 
-        if (full) {
-            indexDao.clearMonthCounts()
-            indexDao.clearScanState()
-        }
-        val previous = if (full) null else indexDao.scanState()
+        val previous = indexDao.scanState(target.stateId)
 
         val resuming = previous != null && !previous.complete && previous.resumeTimestamp != null
+        // A recount is never complete until it is promoted, so it is never incremental.
         val incremental = previous != null && previous.complete
 
         // Seed from what is already stored so a resumed run keeps its earlier tallies.
         val counts = LinkedHashMap<String, Int>()
-        indexDao.monthCounts().forEach { counts[it.yearMonth] = it.count }
+        when (target) {
+            IndexTarget.LIVE -> indexDao.monthCounts().forEach { counts[it.yearMonth] = it.count }
+            IndexTarget.RECOUNT -> indexDao.recountCounts().forEach { counts[it.yearMonth] = it.count }
+        }
         var total = counts.values.sum()
 
         // An incremental run stops once it reaches ground already covered.
@@ -153,6 +219,30 @@ class CleanupRepository(
         var firstRequest = true
         var pages = 0
         var finished = false
+
+        fun state(complete: Boolean) = newest?.let {
+            ScanState(
+                id = target.stateId,
+                newestTimestamp = it,
+                resumeTimestamp = lastTimestamp,
+                resumeKey = lastKey,
+                complete = complete,
+                scannedAt = System.currentTimeMillis(),
+            )
+        }
+
+        suspend fun save(complete: Boolean) {
+            when (target) {
+                IndexTarget.LIVE -> indexDao.saveIndex(
+                    counts.map { MonthCount(it.key, it.value) },
+                    state(complete),
+                )
+                IndexTarget.RECOUNT -> indexDao.saveRecount(
+                    counts.map { RecountMonth(it.key, it.value) },
+                    state(complete),
+                )
+            }
+        }
 
         while (pages++ < MAX_SCAN_PAGES) {
             val page = api.getItemsByTakenDate(
@@ -188,7 +278,7 @@ class CleanupRepository(
             skipUntilKey = null
             firstRequest = false
 
-            saveProgress(counts, newest, lastTimestamp, lastKey, complete = false)
+            if (!incremental) save(complete = false)
             onProgress(total)
 
             if (reachedKnown) {
@@ -202,30 +292,11 @@ class CleanupRepository(
             }
         }
 
-        saveProgress(counts, newest, lastTimestamp, lastKey, complete = finished)
-    }
-
-    private suspend fun saveProgress(
-        counts: Map<String, Int>,
-        newest: Long?,
-        resumeTimestamp: Long?,
-        resumeKey: String?,
-        complete: Boolean,
-    ) {
-        if (counts.isNotEmpty()) {
-            indexDao.upsertMonthCounts(counts.map { MonthCount(it.key, it.value) })
-        }
-        if (newest != null) {
-            indexDao.setScanState(
-                ScanState(
-                    newestTimestamp = newest,
-                    resumeTimestamp = resumeTimestamp,
-                    resumeKey = resumeKey,
-                    complete = complete,
-                    scannedAt = System.currentTimeMillis(),
-                ),
-            )
-        }
+        // An unfinished incremental run is dropped whole; the next one redoes it.
+        if (incremental && !finished) return null
+        // A recount is only ever saved as in progress; promoting it is what completes it.
+        save(complete = finished && target == IndexTarget.LIVE)
+        return if (finished) state(complete = true) else null
     }
 
     /**
@@ -250,6 +321,19 @@ class CleanupRepository(
             MonthCount(ym, (base + delta * n).coerceAtLeast(0))
         }
         if (updated.isNotEmpty()) indexDao.upsertMonthCounts(updated)
+
+        // A recount in progress has already counted everything newer than where it has
+        // reached. Those items must move with the live tallies, or promoting the
+        // recount would bring back photos just sent to the trash (or drop restored ones).
+        val recountAt = indexDao.scanState(ScanState.RECOUNT)?.resumeTimestamp ?: return
+        val passed = decisions.filter { it.takenAt >= recountAt }.groupingBy {
+            YearMonth.from(java.time.Instant.ofEpochMilli(it.takenAt).atZone(zone)).toString()
+        }.eachCount()
+        if (passed.isEmpty()) return
+        val draft = indexDao.recountCounts().associate { it.yearMonth to it.count }
+        indexDao.upsertRecountCounts(
+            passed.map { (ym, n) -> RecountMonth(ym, ((draft[ym] ?: 0) + delta * n).coerceAtLeast(0)) },
+        )
     }
 
     /**
@@ -257,13 +341,21 @@ class CleanupRepository(
      * Nothing here runs without an explicit user confirmation upstream.
      */
     suspend fun applyPending(onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }): ApplyResult {
-        val pending = dao.pendingOnce(Verdict.DELETE)
         val mode = settings.mode.first()
-        if (pending.isEmpty()) return ApplyResult(mode, 0, 0)
-
-        return when (mode) {
-            CleanupMode.TRASH -> applyTrash(pending, onProgress)
-            CleanupMode.ALBUM -> applyAlbum(pending, onProgress)
+        var pending = emptyList<Decision>()
+        // Anything unexpected becomes a result to show, not a crash in the middle of a
+        // run the user is watching. Whatever Google already accepted is recorded below.
+        return try {
+            pending = dao.pendingOnce(Verdict.DELETE)
+            if (pending.isEmpty()) return ApplyResult(mode, 0, 0)
+            when (mode) {
+                CleanupMode.TRASH -> applyTrash(pending, onProgress)
+                CleanupMode.ALBUM -> applyAlbum(pending, onProgress)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ApplyResult(mode, 0, pending.size, error = e.message ?: "Something went wrong")
         }
     }
 
@@ -276,7 +368,7 @@ class CleanupRepository(
             val result = api.moveToTrash(keys, onProgress)
             val done = result.succeeded
             if (done.isNotEmpty()) {
-                dao.markApplied(done, System.currentTimeMillis())
+                dao.markApplied(done, System.currentTimeMillis(), CleanupMode.TRASH)
                 val doneSet = done.toHashSet()
                 adjustMonthCounts(pending.filter { it.dedupKey in doneSet }, delta = -1)
             }
@@ -286,6 +378,8 @@ class CleanupRepository(
                 failed = keys.size - done.size,
                 error = result.error,
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             ApplyResult(CleanupMode.TRASH, 0, keys.size, error = e.message ?: "Failed")
         }
@@ -300,9 +394,16 @@ class CleanupRepository(
             val albumKey = api.findOrCreateAlbum(name)
                 ?: return ApplyResult(CleanupMode.ALBUM, 0, pending.size, name, "Could not create album")
             // Album membership is addressed by mediaKey, not dedupKey.
-            val added = api.addToAlbum(albumKey, pending.map { it.mediaKey }, onProgress)
-            if (added > 0) dao.markApplied(pending.map { it.dedupKey }, System.currentTimeMillis())
-            ApplyResult(CleanupMode.ALBUM, added, pending.size - added, name)
+            val result = api.addToAlbum(albumKey, pending.map { it.mediaKey }, onProgress)
+            // Only what Google accepted is done; the rest stays pending for a retry.
+            val added = result.succeeded.toHashSet()
+            val done = pending.filter { it.mediaKey in added }.map { it.dedupKey }
+            if (done.isNotEmpty()) {
+                dao.markApplied(done, System.currentTimeMillis(), CleanupMode.ALBUM)
+            }
+            ApplyResult(CleanupMode.ALBUM, done.size, pending.size - done.size, name, result.error)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             ApplyResult(CleanupMode.ALBUM, 0, pending.size, name, e.message ?: "Failed")
         }
@@ -315,18 +416,25 @@ class CleanupRepository(
     suspend fun restore(
         decisions: List<Decision>,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
-    ): Int {
-        if (decisions.isEmpty()) return 0
-        val restored = api.restoreFromTrash(decisions.map { it.dedupKey }, onProgress).succeeded
-        if (restored.isNotEmpty()) {
-            // Restored items are no longer condemned; drop the verdict entirely so they
-            // reappear next time the month is reviewed.
-            dao.delete(restored)
-            // And they are back in the library, so the month tallies must reflect that.
-            val restoredSet = restored.toHashSet()
-            adjustMonthCounts(decisions.filter { it.dedupKey in restoredSet }, delta = +1)
+    ): RestoreResult {
+        if (decisions.isEmpty()) return RestoreResult(0, 0)
+        return try {
+            val result = api.restoreFromTrash(decisions.map { it.dedupKey }, onProgress)
+            val restored = result.succeeded
+            if (restored.isNotEmpty()) {
+                // Restored items are no longer condemned; drop the verdict entirely so
+                // they reappear next time the month is reviewed.
+                dao.delete(restored)
+                // And they are back in the library, so the month tallies must reflect that.
+                val restoredSet = restored.toHashSet()
+                adjustMonthCounts(decisions.filter { it.dedupKey in restoredSet }, delta = +1)
+            }
+            RestoreResult(restored.size, decisions.size - restored.size, result.error)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            RestoreResult(0, decisions.size, e.message ?: "Something went wrong")
         }
-        return restored.size
     }
 
     suspend fun clearAllDecisions() = dao.clearAll()

@@ -81,14 +81,6 @@ object Parser {
         )
     }
 
-    fun parseStorageQuota(raw: JsonElement?): StorageQuota? {
-        val data = raw.arr() ?: return null
-        // Values arrive as strings; used may be nested one level depending on account type.
-        val used = data.at(0).arr()?.at(0).long() ?: data.at(0).long() ?: return null
-        val total = data.at(1).long() ?: return null
-        return StorageQuota(used, total)
-    }
-
     /** The album-create response returns the new album's mediaKey. */
     fun parseCreatedAlbumKey(raw: JsonElement?): String? {
         val data = raw.arr() ?: return null
@@ -96,14 +88,15 @@ object Parser {
     }
 
     /** Albums page: an array of albums then a nextPageId; title sits under key 72930366. */
-    fun parseAlbums(raw: JsonElement?): List<Pair<String, String>> {
-        val data = raw.arr() ?: return emptyList()
-        val list = data.at(0).arr() ?: return emptyList()
-        return list.mapNotNull { entry ->
+    fun parseAlbums(raw: JsonElement?): AlbumPage {
+        val data = raw.arr() ?: return AlbumPage(emptyList(), null)
+        val list = data.at(0).arr() ?: return AlbumPage(emptyList(), data.at(1).text())
+        val albums = list.mapNotNull { entry ->
             val album = entry.arr() ?: return@mapNotNull null
             val key = album.at(0).text() ?: return@mapNotNull null
             val title = extra(album, "72930366").arr()?.at(1).text() ?: return@mapNotNull null
             key to title
         }
+        return AlbumPage(albums, data.at(1).text())
     }
 }

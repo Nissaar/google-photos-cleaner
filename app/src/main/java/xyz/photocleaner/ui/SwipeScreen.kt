@@ -155,12 +155,12 @@ fun SwipeScreen(
         }
 
         // ---- Actions ------------------------------------------------------
-        if (state.current != null) {
+        state.current?.let { current ->
             ActionBar(
                 canUndo = state.history.isNotEmpty(),
-                onDelete = vm::delete,
+                onDelete = { vm.delete(current.dedupKey) },
                 onUndo = vm::undo,
-                onKeep = vm::keep,
+                onKeep = { vm.keep(current.dedupKey) },
             )
         }
     }
@@ -174,8 +174,8 @@ fun SwipeScreen(
 private fun PhotoDeck(
     current: MediaItem?,
     next: MediaItem?,
-    onKeep: () -> Unit,
-    onDelete: () -> Unit,
+    onKeep: (dedupKey: String) -> Unit,
+    onDelete: (dedupKey: String) -> Unit,
 ) {
     if (current == null) return
 
@@ -208,7 +208,8 @@ private fun PhotoDeck(
                                     val target = if (settled > 0) screenWidthPx * 1.6f
                                     else -screenWidthPx * 1.6f
                                     offsetX.animateTo(target, tween(220))
-                                    if (settled > 0) onKeep() else onDelete()
+                                    if (settled > 0) onKeep(current.dedupKey)
+                                    else onDelete(current.dedupKey)
                                 } else {
                                     offsetX.animateTo(0f, tween(200))
                                 }

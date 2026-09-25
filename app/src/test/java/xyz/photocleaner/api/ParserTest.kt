@@ -203,16 +203,9 @@ class ParserTest {
         """.trimIndent()
         val result = Parser.parseAlbums(parse(albums))
 
-        assertEquals(2, result.size)
-        assertEquals("albumKey1" to "To Be Deleted", result[0])
-        assertEquals("albumKey2" to "Holidays", result[1])
-    }
-
-    @Test
-    fun `parses storage quota`() {
-        val quota = Parser.parseStorageQuota(parse("""[["1500000000"],"16000000000"]"""))
-        assertNotNull(quota)
-        assertEquals(1_500_000_000L, quota!!.usedBytes)
-        assertEquals(16_000_000_000L, quota.totalBytes)
+        assertEquals(2, result.albums.size)
+        assertEquals("albumKey1" to "To Be Deleted", result.albums[0])
+        assertEquals("albumKey2" to "Holidays", result.albums[1])
+        assertEquals("next", result.nextPageId)
     }
 }

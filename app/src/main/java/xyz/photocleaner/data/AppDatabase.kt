@@ -6,6 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import xyz.photocleaner.security.DatabaseKeyProvider
 import java.io.File
@@ -13,12 +15,43 @@ import java.io.File
 class Converters {
     @TypeConverter fun toVerdict(value: String): Verdict = Verdict.valueOf(value)
     @TypeConverter fun fromVerdict(verdict: Verdict): String = verdict.name
+
+    @TypeConverter fun toMode(value: String?): CleanupMode? =
+        value?.let { runCatching { CleanupMode.valueOf(it) }.getOrNull() }
+    @TypeConverter fun fromMode(mode: CleanupMode?): String? = mode?.name
+}
+
+/**
+ * Schema upgrades. The app is in people's hands, and their verdicts exist nowhere
+ * else, so every version change needs a real migration here — never a rebuild.
+ * Each one is checked against the committed schema files by MigrationsTest.
+ */
+object Migrations {
+
+    /**
+     * v4 records how each applied item was carried out (trash or album), and adds a
+     * table for recounting month tallies without disturbing the ones on screen.
+     */
+    internal val SQL_3_4 = listOf(
+        "CREATE TABLE IF NOT EXISTS `month_counts_recount` " +
+            "(`yearMonth` TEXT NOT NULL, `count` INTEGER NOT NULL, PRIMARY KEY(`yearMonth`))",
+        "ALTER TABLE decisions ADD COLUMN appliedMode TEXT",
+        // Before v4 the two modes left identical rows. Label them as trash, which is
+        // exactly how every earlier version treated them, so nothing changes on upgrade.
+        "UPDATE decisions SET appliedMode = 'TRASH' WHERE applied = 1",
+    )
+
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) = SQL_3_4.forEach(db::execSQL)
+    }
+
+    val ALL = arrayOf(MIGRATION_3_4)
 }
 
 @Database(
-    entities = [Decision::class, MonthCount::class, ScanState::class],
-    version = 3,
-    exportSchema = false,
+    entities = [Decision::class, MonthCount::class, ScanState::class, RecountMonth::class],
+    version = 4,
+    exportSchema = true,
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -41,14 +74,19 @@ abstract class AppDatabase : RoomDatabase() {
             // SQLCipher's native library must be loaded before the factory is used.
             System.loadLibrary("sqlcipher")
 
-            val passphrase = DatabaseKeyProvider.getPassphrase(context)
+            // A fresh key means any database on disk was encrypted with a key that no
+            // longer exists. It cannot be opened, so remove it rather than crash on it.
+            // On first run there is no file, and this does nothing.
+            val passphrase = DatabaseKeyProvider.getPassphrase(context) {
+                deleteFiles(context)
+            }
             val factory = SupportOpenHelperFactory(passphrase)
 
+            // Deliberately no fallbackToDestructiveMigration(): a missing migration
+            // must fail loudly in testing, not silently erase people's verdicts.
             return Room.databaseBuilder(context, AppDatabase::class.java, DB_NAME)
                 .openHelperFactory(factory)
-                // The database holds only local verdicts. If a schema change ever makes
-                // it unreadable, rebuilding is preferable to blocking the app.
-                .fallbackToDestructiveMigration()
+                .addMigrations(*Migrations.ALL)
                 .build()
         }
 
@@ -58,12 +96,16 @@ abstract class AppDatabase : RoomDatabase() {
                 instance?.close()
                 instance = null
                 val appContext = context.applicationContext
-                appContext.deleteDatabase(DB_NAME)
-                // Room may leave -wal/-shm siblings behind.
-                listOf("$DB_NAME-wal", "$DB_NAME-shm").forEach { name ->
-                    File(appContext.getDatabasePath(DB_NAME).parentFile, name).delete()
-                }
+                deleteFiles(appContext)
                 DatabaseKeyProvider.clear(appContext)
+            }
+        }
+
+        private fun deleteFiles(context: Context) {
+            context.deleteDatabase(DB_NAME)
+            // Room may leave -wal/-shm siblings behind.
+            listOf("$DB_NAME-wal", "$DB_NAME-shm").forEach { name ->
+                File(context.getDatabasePath(DB_NAME).parentFile, name).delete()
             }
         }
     }
