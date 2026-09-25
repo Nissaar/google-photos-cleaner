@@ -2,17 +2,26 @@ package xyz.photocleaner.session
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
+import android.os.SystemClock
 import android.webkit.CookieManager
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import java.util.Collections
+import java.util.WeakHashMap
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.coroutines.resume
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,9 +36,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
-import kotlin.coroutines.resume
 
 /**
  * Owns the authenticated Google Photos web session.
@@ -45,7 +51,18 @@ import kotlin.coroutines.resume
  */
 class GPhotosSession(private val appContext: Context) {
 
-    enum class State { UNKNOWN, SIGNED_OUT, READY }
+    enum class State {
+        UNKNOWN,
+        SIGNED_OUT,
+        READY,
+
+        /**
+         * Google could not be reached. Distinct from [SIGNED_OUT] on purpose: the
+         * session is probably fine, and treating a dead network as a sign-out sent
+         * people to the login page every time they opened the app offline.
+         */
+        OFFLINE,
+    }
 
     private val _state = MutableStateFlow(State.UNKNOWN)
     val state: StateFlow<State> = _state.asStateFlow()
@@ -58,7 +75,21 @@ class GPhotosSession(private val appContext: Context) {
     private val rpcLock = Mutex()
 
     @Volatile private var worker: WebView? = null
+
+    /** Whether the worker's *current* page has the bridge. Reset on every new page. */
     @Volatile private var bridgeInstalled = false
+
+    // Where the worker's page load stands. Written on the main thread by its client.
+    @Volatile private var workerLoading = false
+    @Volatile private var workerLoadFailed = false
+    @Volatile private var workerFinishedAt = 0L
+
+    /**
+     * WebViews whose current page failed to load. Their error page still carries the
+     * Photos URL, and injecting the bridge into it reported "no session" — which is
+     * how being offline used to sign people out. Main thread only.
+     */
+    private val failedLoads: MutableSet<WebView> = Collections.newSetFromMap(WeakHashMap())
 
     /**
      * The signed-in account index, taken from the Photos path prefix (`/u/1/` -> 1).
@@ -78,6 +109,9 @@ class GPhotosSession(private val appContext: Context) {
     companion object {
         const val ORIGIN = "https://photos.google.com"
         const val BRIDGE_NAME = "gpcBridge"
+
+        /** How long a finished page gets for its bridge to install before it is judged. */
+        private const val SETTLE_MS = 1_500L
 
         /**
          * Signed out, photos.google.com serves a marketing landing page whose only
@@ -205,6 +239,28 @@ class GPhotosSession(private val appContext: Context) {
         }
 
         web.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                view?.let(failedLoads::remove)
+                if (view === worker) {
+                    workerLoading = true
+                    workerLoadFailed = false
+                    bridgeInstalled = false
+                }
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?,
+            ) {
+                super.onReceivedError(view, request, error)
+                // Sub-resource failures are routine; only the page itself matters here.
+                if (view == null || request?.isForMainFrame != true) return
+                failedLoads += view
+                if (view === worker) workerLoadFailed = true
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
                 request: WebResourceRequest?,
@@ -228,6 +284,7 @@ class GPhotosSession(private val appContext: Context) {
                 if (view === worker) {
                     worker = null
                     bridgeInstalled = false
+                    workerLoading = false
                     _state.value = State.UNKNOWN
                     // Any in-flight RPCs will never be answered; fail them now rather
                     // than leaving their callers hanging until timeout.
@@ -240,8 +297,12 @@ class GPhotosSession(private val appContext: Context) {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 val host = Uri.parse(url ?: "").host
-                if (host != null && (host == "photos.google.com")) {
-                    view?.evaluateJavascript(loadBridgeJs(), null)
+                if (view != null && host == "photos.google.com" && view !in failedLoads) {
+                    view.evaluateJavascript(loadBridgeJs(), null)
+                }
+                if (view === worker) {
+                    workerLoading = false
+                    workerFinishedAt = SystemClock.elapsedRealtime()
                 }
                 onPageFinished(url)
             }
@@ -257,15 +318,15 @@ class GPhotosSession(private val appContext: Context) {
                 web,
                 BRIDGE_NAME,
                 setOf(ORIGIN),
-            ) { _, message: WebMessageCompat, sourceOrigin: Uri, isMainFrame: Boolean, _ ->
+            ) { view, message: WebMessageCompat, sourceOrigin: Uri, isMainFrame: Boolean, _ ->
                 if (!isMainFrame) return@addWebMessageListener
                 if (sourceOrigin.toString().trimEnd('/') != ORIGIN) return@addWebMessageListener
-                message.data?.let(::onBridgeMessage)
+                message.data?.let { onBridgeMessage(view, it) }
             }
         } else {
             // Fallback for very old WebView providers. Guarded by the navigation
             // allowlist above, which keeps non-Google origins out of this WebView.
-            web.addJavascriptInterface(LegacyBridge(::onBridgeMessage), BRIDGE_NAME)
+            web.addJavascriptInterface(LegacyBridge { onBridgeMessage(web, it) }, BRIDGE_NAME)
         }
     }
 
@@ -292,7 +353,11 @@ class GPhotosSession(private val appContext: Context) {
         }
     }
 
-    private fun onBridgeMessage(raw: String) {
+    private fun onBridgeMessage(from: WebView, raw: String) {
+        // Only the worker carries out calls. The login WebView runs the bridge too (it
+        // loads the same pages), but its word says nothing about the worker's page —
+        // trusting it marked the worker ready while its page had no bridge at all.
+        if (from !== worker) return
         val obj = runCatching { json.parseToJsonElement(raw).jsonObject }.getOrNull() ?: return
         val id = obj["id"]?.jsonPrimitive?.content ?: return
 
@@ -303,7 +368,8 @@ class GPhotosSession(private val appContext: Context) {
                 rememberAccountPath(probe["path"]?.jsonPrimitive?.content)
                 probe["ready"]?.jsonPrimitive?.content == "true"
             }.getOrDefault(false)
-            if (ready) markReady() else _state.value = State.SIGNED_OUT
+            // "Not ready" is not proof of a sign-out on its own; ensureReady decides that.
+            if (ready) markReady()
             return
         }
 
@@ -324,29 +390,66 @@ class GPhotosSession(private val appContext: Context) {
         val web = WebView(appContext)
         configure(web)
         worker = web
-        web.loadUrl("$ORIGIN/")
+        loadWorker(web)
         web
     }
 
-    /** True once a signed-in Photos page with a live bridge is available. */
+    /** Main thread. Flags are set here, not only in onPageStarted, which fires later. */
+    private fun loadWorker(web: WebView) {
+        workerLoading = true
+        workerLoadFailed = false
+        bridgeInstalled = false
+        web.loadUrl("$ORIGIN/")
+    }
+
+    /**
+     * True once a signed-in Photos page with a live bridge is available.
+     *
+     * Sets the state to match what it found, and only calls it a sign-out on real
+     * evidence: a Photos page that loaded, was reloaded with the current cookies, and
+     * still had no session. A failed load or a timeout is [State.OFFLINE] instead.
+     */
     suspend fun ensureReady(timeoutMs: Long = 45_000): Boolean {
         val web = ensureWorker()
-        return try {
-            withTimeout(timeoutMs) {
-                while (true) {
-                    val probe = probe(web)
-                    if (probe) {
-                        markReady()
-                        return@withTimeout true
-                    }
-                    kotlinx.coroutines.delay(400)
+        // A page that failed earlier will not recover on its own; start it again.
+        withContext(Dispatchers.Main) { if (workerLoadFailed) loadWorker(web) }
+
+        var reloaded = false
+        val outcome: State? = withTimeoutOrNull(timeoutMs) {
+            while (true) {
+                if (probe(web)) return@withTimeoutOrNull State.READY
+                if (workerLoadFailed) return@withTimeoutOrNull State.OFFLINE
+
+                // Give a finished page a moment for the bridge to install and report.
+                val settled = !workerLoading &&
+                    SystemClock.elapsedRealtime() - workerFinishedAt > SETTLE_MS
+                if (settled) {
+                    if (reloaded) return@withTimeoutOrNull State.SIGNED_OUT
+                    // Loaded without a session. It may predate a sign-in that just
+                    // finished in the login WebView — load it again with today's cookies.
+                    reloaded = true
+                    withContext(Dispatchers.Main) { loadWorker(web) }
                 }
-                @Suppress("UNREACHABLE_CODE")
+                delay(400)
+            }
+            @Suppress("UNREACHABLE_CODE")
+            null
+        }
+
+        return when (outcome) {
+            State.READY -> {
+                markReady()
+                true
+            }
+            State.SIGNED_OUT -> {
+                _state.value = State.SIGNED_OUT
                 false
             }
-        } catch (e: TimeoutCancellationException) {
-            _state.value = State.SIGNED_OUT
-            false
+            // Explicit load failure, or nothing loaded in time: Google is not reachable.
+            else -> {
+                _state.value = State.OFFLINE
+                false
+            }
         }
     }
 
@@ -355,10 +458,13 @@ class GPhotosSession(private val appContext: Context) {
         val deferred = CompletableDeferred<Result<String>>()
         pending[id] = deferred
         withContext(Dispatchers.Main) {
+            // Answers at once when the page has no bridge, rather than leaving the
+            // caller to wait out the full timeout for a reply that cannot come.
             web.evaluateJavascript(
-                "(function(){ if(window.__gpc){window.__gpc.checkSession('$id');} })();",
-                null,
-            )
+                "(function(){ if(window.__gpc){window.__gpc.checkSession('$id'); return true;} return false; })();",
+            ) { hasBridge ->
+                if (hasBridge != "true") pending.remove(id)?.complete(Result.failure(SessionException("NO_BRIDGE")))
+            }
         }
         // withTimeoutOrNull, not runCatching: the latter would also swallow the
         // caller being cancelled, and keep probing a screen nobody is looking at.
@@ -379,7 +485,9 @@ class GPhotosSession(private val appContext: Context) {
     suspend fun rpc(rpcid: String, argsJson: String, timeoutMs: Long = 60_000): JsonElement =
         rpcLock.withLock {
             val web = ensureWorker()
-            if (!bridgeInstalled && !ensureReady()) throw SessionException("NO_SESSION")
+            if (!bridgeInstalled && !ensureReady()) {
+                throw SessionException(if (_state.value == State.OFFLINE) "OFFLINE" else "NO_SESSION")
+            }
 
             val id = "r${idSeq.incrementAndGet()}"
             val deferred = CompletableDeferred<Result<String>>()
@@ -431,4 +539,19 @@ class GPhotosSession(private val appContext: Context) {
     }
 }
 
-class SessionException(val code: String) : Exception(code)
+/**
+ * A failed call into Google Photos. [code] is for logic; [message] is written for
+ * the person using the app, since it is what error banners show.
+ */
+class SessionException(val code: String) : Exception(describe(code)) {
+    private companion object {
+        fun describe(code: String): String = when (code) {
+            "OFFLINE" -> "Can't reach Google Photos. Check your connection and try again."
+            "NO_SESSION" -> "You're signed out of Google Photos."
+            "TIMEOUT" -> "Google Photos took too long to answer. Try again."
+            "RATE_LIMITED" -> "Google is limiting requests right now. Wait a minute and try again."
+            "RENDERER_GONE" -> "The connection to Google Photos was interrupted. Try again."
+            else -> "Google Photos request failed ($code)."
+        }
+    }
+}

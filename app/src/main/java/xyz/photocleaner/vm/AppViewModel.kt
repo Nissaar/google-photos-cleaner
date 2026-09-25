@@ -70,9 +70,14 @@ class AppViewModel : ViewModel() {
 
     private suspend fun warmSession() {
         val ready = session.ensureReady()
-        settings.setWasSignedIn(ready)
+        // Only a confirmed sign-out forgets the session. Offline, the session is most
+        // likely still good, and the next launch should open on the library again.
+        if (ready || session.state.value == GPhotosSession.State.SIGNED_OUT) {
+            settings.setWasSignedIn(ready)
+        }
     }
 
+    /** Tries to reach Google again, e.g. from the offline banner. */
     fun refreshSession() {
         viewModelScope.launch { warmSession() }
     }

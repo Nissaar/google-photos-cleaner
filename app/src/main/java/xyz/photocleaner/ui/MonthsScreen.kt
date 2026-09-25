@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.Check
+import xyz.photocleaner.session.GPhotosSession
 import xyz.photocleaner.vm.MonthEntry
 import xyz.photocleaner.vm.MonthFilter
 import androidx.compose.ui.Alignment
@@ -68,6 +69,7 @@ fun MonthsScreen(
 ) {
     val state by vm.state.collectAsState()
     val pending by appVm.pendingCount.collectAsState()
+    val sessionState by appVm.sessionState.collectAsState()
 
     // Long-pressing a month you have started offers to forget those verdicts.
     var resetTarget by remember { mutableStateOf<MonthEntry?>(null) }
@@ -136,15 +138,24 @@ fun MonthsScreen(
             LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
         }
 
-        state.error?.let { err ->
+        // Offline explains itself, and covers any sync error it caused.
+        val banner = if (sessionState == GPhotosSession.State.OFFLINE) {
+            "Can't reach Google Photos. Showing the months saved on this phone."
+        } else {
+            state.error
+        }
+        banner?.let { message ->
             Surface(
                 color = MaterialTheme.colorScheme.errorContainer,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
             ) {
                 Column(Modifier.padding(14.dp)) {
-                    Text(err, color = MaterialTheme.colorScheme.onErrorContainer)
-                    TextButton(onClick = { vm.sync(full = true) }) { Text("Try again") }
+                    Text(message, color = MaterialTheme.colorScheme.onErrorContainer)
+                    // A retry, not a full rescan: one failed request is no reason to
+                    // throw away the saved counts and re-read the whole library. The
+                    // sync re-checks the session itself, which also clears "offline".
+                    TextButton(onClick = { vm.sync(retry = true) }) { Text("Try again") }
                 }
             }
         }

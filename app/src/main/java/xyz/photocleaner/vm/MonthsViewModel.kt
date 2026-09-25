@@ -110,11 +110,12 @@ class MonthsViewModel : ViewModel() {
 
     /**
      * Updates the index. Incremental by default; [full] re-counts everything, which is
-     * how the user corrects drift after deleting photos elsewhere.
+     * how the user corrects drift after deleting photos elsewhere. [retry] re-runs a
+     * sync that failed, without the full rescan's cost of re-reading everything.
      */
-    fun sync(full: Boolean = false) {
+    fun sync(full: Boolean = false, retry: Boolean = false) {
         if (_state.value.scanning) return
-        if (syncedThisSession && !full) return
+        if (syncedThisSession && !full && !retry) return
         syncedThisSession = true
 
         job?.cancel()
