@@ -37,8 +37,12 @@ class AppViewModel : ViewModel() {
     val albumName: StateFlow<String> =
         settings.albumName.stateIn(viewModelScope, SharingStarted.Eagerly, "To Be Deleted")
 
-    val appLock: StateFlow<Boolean> =
-        settings.appLock.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    /**
+     * Null until the stored value has been read. Treating "not loaded yet" as "off"
+     * is what once let the app open unlocked, so callers must wait for a real value.
+     */
+    val appLock: StateFlow<Boolean?> =
+        settings.appLock.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val skipDecided: StateFlow<Boolean> =
         settings.skipDecided.stateIn(viewModelScope, SharingStarted.Eagerly, true)

@@ -120,7 +120,7 @@ fun SettingsScreen(appVm: AppViewModel, onBack: () -> Unit, onSignedOut: () -> U
             ToggleRow(
                 title = "Require unlock to open",
                 subtitle = "Ask for fingerprint, face or device PIN each time.",
-                checked = appLock,
+                checked = appLock == true,
                 onChange = appVm::setAppLock,
             )
             ToggleRow(
