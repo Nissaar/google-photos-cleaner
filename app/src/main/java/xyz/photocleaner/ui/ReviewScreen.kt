@@ -255,6 +255,23 @@ fun ReviewScreen(
             confirmButton = { TextButton(onClick = vm::dismissResult) { Text("OK") } },
         )
     }
+
+    progress.restoreResult?.let { result ->
+        AlertDialog(
+            onDismissRequest = vm::dismissResult,
+            title = { Text(if (result.error == null) "Restored" else "Partly restored") },
+            text = {
+                Text(
+                    buildString {
+                        append("${result.restored} back in your library.")
+                        if (result.failed > 0) append("\n${result.failed} could not be restored.")
+                        result.error?.let { append("\n\n$it") }
+                    },
+                )
+            },
+            confirmButton = { TextButton(onClick = vm::dismissResult) { Text("OK") } },
+        )
+    }
 }
 
 @Composable

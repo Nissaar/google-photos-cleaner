@@ -11,12 +11,14 @@ import kotlinx.coroutines.launch
 import xyz.photocleaner.Graph
 import xyz.photocleaner.data.ApplyResult
 import xyz.photocleaner.data.Decision
+import xyz.photocleaner.data.RestoreResult
 
 data class ApplyProgress(
     val running: Boolean = false,
     val done: Int = 0,
     val total: Int = 0,
     val result: ApplyResult? = null,
+    val restoreResult: RestoreResult? = null,
 ) {
     val fraction: Float get() = if (total == 0) 0f else (done.toFloat() / total).coerceIn(0f, 1f)
 }
@@ -52,12 +54,12 @@ class ReviewViewModel : ViewModel() {
         if (_progress.value.running || decisions.isEmpty()) return
         Graph.appScope.launch {
             _progress.value = ApplyProgress(running = true, total = decisions.size)
-            runCatching {
-                repo.restore(decisions) { done, total ->
-                    _progress.value = _progress.value.copy(done = done, total = total)
-                }
+            val result = repo.restore(decisions) { done, total ->
+                _progress.value = _progress.value.copy(done = done, total = total)
             }
-            _progress.value = ApplyProgress(running = false)
+            // Reported like apply: a restore that quietly did nothing looked identical
+            // to one that worked until you went looking in Google Photos.
+            _progress.value = ApplyProgress(running = false, restoreResult = result)
         }
     }
 
@@ -67,7 +69,7 @@ class ReviewViewModel : ViewModel() {
     }
 
     fun dismissResult() {
-        _progress.value = _progress.value.copy(result = null)
+        _progress.value = _progress.value.copy(result = null, restoreResult = null)
     }
 
     private companion object {

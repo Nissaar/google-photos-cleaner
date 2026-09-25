@@ -11,6 +11,8 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import xyz.photocleaner.Graph
@@ -29,6 +31,18 @@ object ShareActions {
 
     private const val SHARE_DIR = "share"
     private const val PHOTOS_PACKAGE = "com.google.android.apps.photos"
+
+    /**
+     * The largest video copied for sharing. Originals can run to gigabytes, and this
+     * copy lands in the phone's cache; past this, Google Photos itself is the better
+     * place to share from.
+     */
+    private const val MAX_VIDEO_BYTES = 200L * 1024 * 1024
+
+    private class TooLargeException : IllegalStateException(
+        "This video is over 200 MB, too large to share from here. " +
+            "Open it in Google Photos to share it.",
+    )
 
     /** Progress while a file is being prepared for sharing. */
     data class Progress(val bytes: Long, val total: Long) {
@@ -130,10 +144,14 @@ object ShareActions {
 
     /**
      * Downloads the video so it can be shared as a file, the way the Google Photos
-     * app does. Tries each URL form in turn, since which one serves depends on the
-     * video, and reports progress because this can be tens of megabytes.
+     * app does. Tries each URL form in turn — the small transcoded rendition first —
+     * since which one serves depends on the video, and reports progress because this
+     * can be tens of megabytes.
+     *
+     * Stops if the coroutine is cancelled (the card left the screen), and past
+     * [MAX_VIDEO_BYTES]. Either way the partial file is deleted.
      */
-    private fun downloadVideo(
+    private suspend fun downloadVideo(
         context: Context,
         item: MediaItem,
         authUser: Int,
@@ -151,23 +169,37 @@ object ShareActions {
                         ?.takeIf { it.startsWith("video/") }
                         ?: "video/mp4"
                     val total = body.contentLength()
+                    if (total > MAX_VIDEO_BYTES) throw TooLargeException()
 
                     val file = freshShareFile(context, "video.mp4")
                     var written = 0L
-                    body.byteStream().use { input ->
-                        FileOutputStream(file).use { output ->
-                            val buffer = ByteArray(64 * 1024)
-                            while (true) {
-                                val read = input.read(buffer)
-                                if (read == -1) break
-                                output.write(buffer, 0, read)
-                                written += read
-                                onProgress(Progress(written, total))
+                    try {
+                        body.byteStream().use { input ->
+                            FileOutputStream(file).use { output ->
+                                val buffer = ByteArray(64 * 1024)
+                                while (true) {
+                                    currentCoroutineContext().ensureActive()
+                                    val read = input.read(buffer)
+                                    if (read == -1) break
+                                    written += read
+                                    // Content-Length can be absent, so check as it arrives too.
+                                    if (written > MAX_VIDEO_BYTES) throw TooLargeException()
+                                    output.write(buffer, 0, read)
+                                    onProgress(Progress(written, total))
+                                }
                             }
                         }
+                    } catch (e: Exception) {
+                        file.delete()
+                        throw e
                     }
                     if (written > 0) return uriFor(context, file) to mime
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: TooLargeException) {
+                // The later URL forms are the original or larger: no point trying them.
+                throw e
             } catch (e: Exception) {
                 // Try the next URL form.
             }

@@ -18,6 +18,13 @@ data class ApplyResult(
     val error: String? = null,
 )
 
+/** Outcome of restoring items from the trash. */
+data class RestoreResult(
+    val restored: Int,
+    val failed: Int,
+    val error: String? = null,
+)
+
 /**
  * Ties local verdicts to the remote actions that carry them out.
  *
@@ -333,13 +340,21 @@ class CleanupRepository(
      * Nothing here runs without an explicit user confirmation upstream.
      */
     suspend fun applyPending(onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }): ApplyResult {
-        val pending = dao.pendingOnce(Verdict.DELETE)
         val mode = settings.mode.first()
-        if (pending.isEmpty()) return ApplyResult(mode, 0, 0)
-
-        return when (mode) {
-            CleanupMode.TRASH -> applyTrash(pending, onProgress)
-            CleanupMode.ALBUM -> applyAlbum(pending, onProgress)
+        var pending = emptyList<Decision>()
+        // Anything unexpected becomes a result to show, not a crash in the middle of a
+        // run the user is watching. Whatever Google already accepted is recorded below.
+        return try {
+            pending = dao.pendingOnce(Verdict.DELETE)
+            if (pending.isEmpty()) return ApplyResult(mode, 0, 0)
+            when (mode) {
+                CleanupMode.TRASH -> applyTrash(pending, onProgress)
+                CleanupMode.ALBUM -> applyAlbum(pending, onProgress)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ApplyResult(mode, 0, pending.size, error = e.message ?: "Something went wrong")
         }
     }
 
@@ -400,18 +415,25 @@ class CleanupRepository(
     suspend fun restore(
         decisions: List<Decision>,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
-    ): Int {
-        if (decisions.isEmpty()) return 0
-        val restored = api.restoreFromTrash(decisions.map { it.dedupKey }, onProgress).succeeded
-        if (restored.isNotEmpty()) {
-            // Restored items are no longer condemned; drop the verdict entirely so they
-            // reappear next time the month is reviewed.
-            dao.delete(restored)
-            // And they are back in the library, so the month tallies must reflect that.
-            val restoredSet = restored.toHashSet()
-            adjustMonthCounts(decisions.filter { it.dedupKey in restoredSet }, delta = +1)
+    ): RestoreResult {
+        if (decisions.isEmpty()) return RestoreResult(0, 0)
+        return try {
+            val result = api.restoreFromTrash(decisions.map { it.dedupKey }, onProgress)
+            val restored = result.succeeded
+            if (restored.isNotEmpty()) {
+                // Restored items are no longer condemned; drop the verdict entirely so
+                // they reappear next time the month is reviewed.
+                dao.delete(restored)
+                // And they are back in the library, so the month tallies must reflect that.
+                val restoredSet = restored.toHashSet()
+                adjustMonthCounts(decisions.filter { it.dedupKey in restoredSet }, delta = +1)
+            }
+            RestoreResult(restored.size, decisions.size - restored.size, result.error)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            RestoreResult(0, decisions.size, e.message ?: "Something went wrong")
         }
-        return restored.size
     }
 
     suspend fun clearAllDecisions() = dao.clearAll()
