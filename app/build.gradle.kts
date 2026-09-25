@@ -69,6 +69,14 @@ android {
     }
 }
 
+/**
+ * Room writes each schema version here. The files are committed: they are the record
+ * of what shipped, and the migration tests check upgrades against them.
+ */
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -101,4 +109,6 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)
+    // Real SQLite on the JVM, so migrations are tested against actual databases.
+    testImplementation(libs.sqlite.jdbc)
 }

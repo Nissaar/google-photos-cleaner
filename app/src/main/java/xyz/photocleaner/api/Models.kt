@@ -76,6 +76,12 @@ data class TimelinePage(
     val lastItemTimestamp: Long?,
 )
 
+/** One page of the album list, as (mediaKey, title) pairs. */
+data class AlbumPage(
+    val albums: List<Pair<String, String>>,
+    val nextPageId: String?,
+)
+
 data class StorageQuota(
     val usedBytes: Long,
     val totalBytes: Long,

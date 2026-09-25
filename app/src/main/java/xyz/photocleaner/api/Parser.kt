@@ -96,14 +96,15 @@ object Parser {
     }
 
     /** Albums page: an array of albums then a nextPageId; title sits under key 72930366. */
-    fun parseAlbums(raw: JsonElement?): List<Pair<String, String>> {
-        val data = raw.arr() ?: return emptyList()
-        val list = data.at(0).arr() ?: return emptyList()
-        return list.mapNotNull { entry ->
+    fun parseAlbums(raw: JsonElement?): AlbumPage {
+        val data = raw.arr() ?: return AlbumPage(emptyList(), null)
+        val list = data.at(0).arr() ?: return AlbumPage(emptyList(), data.at(1).text())
+        val albums = list.mapNotNull { entry ->
             val album = entry.arr() ?: return@mapNotNull null
             val key = album.at(0).text() ?: return@mapNotNull null
             val title = extra(album, "72930366").arr()?.at(1).text() ?: return@mapNotNull null
             key to title
         }
+        return AlbumPage(albums, data.at(1).text())
     }
 }

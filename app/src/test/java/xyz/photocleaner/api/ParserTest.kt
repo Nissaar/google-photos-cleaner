@@ -203,9 +203,10 @@ class ParserTest {
         """.trimIndent()
         val result = Parser.parseAlbums(parse(albums))
 
-        assertEquals(2, result.size)
-        assertEquals("albumKey1" to "To Be Deleted", result[0])
-        assertEquals("albumKey2" to "Holidays", result[1])
+        assertEquals(2, result.albums.size)
+        assertEquals("albumKey1" to "To Be Deleted", result.albums[0])
+        assertEquals("albumKey2" to "Holidays", result.albums[1])
+        assertEquals("next", result.nextPageId)
     }
 
     @Test

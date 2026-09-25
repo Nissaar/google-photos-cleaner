@@ -3,6 +3,7 @@ package xyz.photocleaner.api
 import kotlinx.serialization.json.JsonElement
 import xyz.photocleaner.session.GPhotosSession
 import xyz.photocleaner.session.SessionException
+import xyz.photocleaner.util.runCatchingNonCancel
 import java.time.YearMonth
 import java.time.ZoneId
 
@@ -18,6 +19,11 @@ class PhotosApi(
 ) {
 
     enum class Source(val code: Int) { LIBRARY(1), ARCHIVE(2), BOTH(3) }
+
+    private companion object {
+        /** 50 pages of 100 is far past any real album count; it only stops a runaway loop. */
+        const val MAX_ALBUM_PAGES = 50
+    }
 
     private suspend fun call(rpcid: String, args: String, write: Boolean): JsonElement {
         if (write) pacer.beforeWrite() else pacer.beforeRead()
@@ -161,9 +167,31 @@ class PhotosApi(
         return MutationResult(done)
     }
 
-    /** Lists the user's albums as (mediaKey, title). */
-    suspend fun listAlbums(pageSize: Int = 100): List<Pair<String, String>> =
-        Parser.parseAlbums(call(Rpc.ALBUM_LIST, jsonArg(null, null, pageSize, null, 1), write = false))
+    /**
+     * Lists the user's albums as (mediaKey, title), following every page.
+     *
+     * A later page failing returns what has been read so far rather than throwing —
+     * the worst case is then the old first-page-only behaviour, not a broken apply.
+     */
+    suspend fun listAlbums(pageSize: Int = 100): List<Pair<String, String>> {
+        val albums = mutableListOf<Pair<String, String>>()
+        val seenPages = mutableSetOf<String>()
+        var pageId: String? = null
+        while (seenPages.size < MAX_ALBUM_PAGES) {
+            val args = jsonArg(pageId, null, pageSize, null, 1)
+            val page = if (pageId == null) {
+                Parser.parseAlbums(call(Rpc.ALBUM_LIST, args, write = false))
+            } else {
+                runCatchingNonCancel { Parser.parseAlbums(call(Rpc.ALBUM_LIST, args, write = false)) }
+                    .getOrNull() ?: break
+            }
+            albums += page.albums
+            // A repeated page token would loop forever; treat it as the end.
+            pageId = page.nextPageId?.takeIf { it !in seenPages } ?: break
+            seenPages += pageId
+        }
+        return albums
+    }
 
     /** Creates an album and returns its mediaKey. */
     suspend fun createAlbum(title: String): String? =
@@ -176,17 +204,22 @@ class PhotosApi(
         albumMediaKey: String,
         mediaKeys: List<String>,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
-    ): Int {
-        if (mediaKeys.isEmpty()) return 0
-        var added = 0
+    ): MutationResult {
+        if (mediaKeys.isEmpty()) return MutationResult(emptyList())
+        val done = mutableListOf<String>()
         val batches = mediaKeys.distinct().chunked(Pacer.MAX_TRASH_BATCH)
         for ((index, batch) in batches.withIndex()) {
-            call(Rpc.ALBUM_ADD_ITEMS, jsonArg(batch, albumMediaKey), write = true)
-            added += batch.size
-            onProgress(added, mediaKeys.size)
+            try {
+                call(Rpc.ALBUM_ADD_ITEMS, jsonArg(batch, albumMediaKey), write = true)
+            } catch (e: Exception) {
+                // Stop here, but report the batches Google already accepted.
+                return MutationResult(done, e.message ?: "Request failed")
+            }
+            done += batch
+            onProgress(done.size, mediaKeys.size)
             if (index < batches.lastIndex) pacer.restBetweenBatches()
         }
-        return added
+        return MutationResult(done)
     }
 
     /**

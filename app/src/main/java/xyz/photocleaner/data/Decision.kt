@@ -33,6 +33,11 @@ data class Decision(
     /** True once the verdict has actually been carried out against Google Photos. */
     val applied: Boolean = false,
     val appliedAt: Long? = null,
+    /**
+     * How it was carried out. Only [CleanupMode.TRASH] items are in Google's trash —
+     * album items are still in the library and must never be offered for restore.
+     */
+    val appliedMode: CleanupMode? = null,
 ) {
     companion object {
         fun from(item: MediaItem, verdict: Verdict, now: Long = System.currentTimeMillis()) =

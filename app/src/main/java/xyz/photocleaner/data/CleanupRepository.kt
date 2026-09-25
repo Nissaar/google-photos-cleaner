@@ -276,7 +276,7 @@ class CleanupRepository(
             val result = api.moveToTrash(keys, onProgress)
             val done = result.succeeded
             if (done.isNotEmpty()) {
-                dao.markApplied(done, System.currentTimeMillis())
+                dao.markApplied(done, System.currentTimeMillis(), CleanupMode.TRASH)
                 val doneSet = done.toHashSet()
                 adjustMonthCounts(pending.filter { it.dedupKey in doneSet }, delta = -1)
             }
@@ -300,9 +300,14 @@ class CleanupRepository(
             val albumKey = api.findOrCreateAlbum(name)
                 ?: return ApplyResult(CleanupMode.ALBUM, 0, pending.size, name, "Could not create album")
             // Album membership is addressed by mediaKey, not dedupKey.
-            val added = api.addToAlbum(albumKey, pending.map { it.mediaKey }, onProgress)
-            if (added > 0) dao.markApplied(pending.map { it.dedupKey }, System.currentTimeMillis())
-            ApplyResult(CleanupMode.ALBUM, added, pending.size - added, name)
+            val result = api.addToAlbum(albumKey, pending.map { it.mediaKey }, onProgress)
+            // Only what Google accepted is done; the rest stays pending for a retry.
+            val added = result.succeeded.toHashSet()
+            val done = pending.filter { it.mediaKey in added }.map { it.dedupKey }
+            if (done.isNotEmpty()) {
+                dao.markApplied(done, System.currentTimeMillis(), CleanupMode.ALBUM)
+            }
+            ApplyResult(CleanupMode.ALBUM, done.size, pending.size - done.size, name, result.error)
         } catch (e: Exception) {
             ApplyResult(CleanupMode.ALBUM, 0, pending.size, name, e.message ?: "Failed")
         }

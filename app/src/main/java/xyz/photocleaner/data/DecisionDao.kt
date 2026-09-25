@@ -54,15 +54,24 @@ interface DecisionDao {
     @Query("SELECT * FROM decisions WHERE verdict = :verdict AND applied = 0")
     suspend fun pendingOnce(verdict: Verdict = Verdict.DELETE): List<Decision>
 
-    /** Items already sent to Google's trash — the source list for undo. */
-    @Query("SELECT * FROM decisions WHERE verdict = 'DELETE' AND applied = 1 ORDER BY appliedAt DESC")
+    /**
+     * Items already sent to Google's trash — the source list for undo. Album-mode
+     * items are excluded: they never left the library, so there is nothing to restore.
+     */
+    @Query(
+        "SELECT * FROM decisions WHERE verdict = 'DELETE' AND applied = 1 " +
+            "AND appliedMode = 'TRASH' ORDER BY appliedAt DESC",
+    )
     fun applied(): Flow<List<Decision>>
 
     @Query("SELECT * FROM decisions WHERE verdict = 'DELETE' AND applied = 1 AND appliedAt >= :since")
     suspend fun appliedSince(since: Long): List<Decision>
 
-    @Query("UPDATE decisions SET applied = 1, appliedAt = :at WHERE dedupKey IN (:keys)")
-    suspend fun markApplied(keys: List<String>, at: Long)
+    @Query(
+        "UPDATE decisions SET applied = 1, appliedAt = :at, appliedMode = :mode " +
+            "WHERE dedupKey IN (:keys)",
+    )
+    suspend fun markApplied(keys: List<String>, at: Long, mode: CleanupMode)
 
     @Query("DELETE FROM decisions WHERE dedupKey IN (:keys)")
     suspend fun delete(keys: List<String>)
