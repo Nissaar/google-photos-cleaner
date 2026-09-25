@@ -32,8 +32,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -478,11 +480,8 @@ class GPhotosSession(private val appContext: Context) {
         }.getOrDefault(false)
     }
 
-    /**
-     * Invokes a batchexecute RPC in the page and returns its decoded JSON payload.
-     * [argsJson] must already be a JSON array literal.
-     */
-    suspend fun rpc(rpcid: String, argsJson: String, timeoutMs: Long = 60_000): JsonElement =
+    /** Invokes a batchexecute RPC in the page and returns its decoded JSON payload. */
+    suspend fun rpc(rpcid: String, args: JsonArray, timeoutMs: Long = 60_000): JsonElement =
         rpcLock.withLock {
             val web = ensureWorker()
             if (!bridgeInstalled && !ensureReady()) {
@@ -493,18 +492,21 @@ class GPhotosSession(private val appContext: Context) {
             val deferred = CompletableDeferred<Result<String>>()
             pending[id] = deferred
 
-            // argsJson is embedded as a JS string literal, so it must be escaped.
-            val escaped = argsJson
-                .replace("\\", "\\\\")
-                .replace("'", "\\'")
-                .replace("\n", "")
-                .replace("\r", "")
+            // Every value goes into the script as a JSON string, which is also a valid
+            // JavaScript string literal: correct escaping without writing any by hand.
+            val script = "(function(){ if(window.__gpc){window.__gpc.call(" +
+                "${jsString(id)},${jsString(rpcid)},${jsString(args.toString())}); return true;} " +
+                "return false; })();"
 
             withContext(Dispatchers.Main) {
-                web.evaluateJavascript(
-                    "(function(){ if(window.__gpc){window.__gpc.call('$id','$rpcid','$escaped');} })();",
-                    null,
-                )
+                web.evaluateJavascript(script) { hasBridge ->
+                    // The page lost its bridge (it navigated). Fail now rather than wait out
+                    // the timeout, and make the next call re-establish it.
+                    if (hasBridge != "true") {
+                        bridgeInstalled = false
+                        pending.remove(id)?.complete(Result.failure(SessionException("NO_BRIDGE")))
+                    }
+                }
             }
 
             val result = try {
@@ -517,6 +519,9 @@ class GPhotosSession(private val appContext: Context) {
             val payload = result.getOrElse { throw it }
             if (payload == "null") JsonNull else json.parseToJsonElement(payload)
         }
+
+    /** A string primitive prints as a quoted, fully escaped JSON string. */
+    private fun jsString(value: String): String = JsonPrimitive(value).toString()
 
     /** Wipes every trace of the Google session from the device. */
     suspend fun signOut() = withContext(Dispatchers.Main) {
@@ -550,7 +555,8 @@ class SessionException(val code: String) : Exception(describe(code)) {
             "NO_SESSION" -> "You're signed out of Google Photos."
             "TIMEOUT" -> "Google Photos took too long to answer. Try again."
             "RATE_LIMITED" -> "Google is limiting requests right now. Wait a minute and try again."
-            "RENDERER_GONE" -> "The connection to Google Photos was interrupted. Try again."
+            "RENDERER_GONE", "NO_BRIDGE" ->
+                "The connection to Google Photos was interrupted. Try again."
             else -> "Google Photos request failed ($code)."
         }
     }

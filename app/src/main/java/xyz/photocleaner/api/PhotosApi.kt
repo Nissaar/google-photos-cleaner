@@ -1,5 +1,6 @@
 package xyz.photocleaner.api
 
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import xyz.photocleaner.session.GPhotosSession
 import xyz.photocleaner.session.SessionException
@@ -26,7 +27,7 @@ class PhotosApi(
         const val MAX_ALBUM_PAGES = 50
     }
 
-    private suspend fun call(rpcid: String, args: String, write: Boolean): JsonElement {
+    private suspend fun call(rpcid: String, args: JsonArray, write: Boolean): JsonElement {
         if (write) pacer.beforeWrite() else pacer.beforeRead()
         return try {
             session.rpc(rpcid, args).also { pacer.onSuccess() }
@@ -36,19 +37,7 @@ class PhotosApi(
         }
     }
 
-    private fun jsonArg(vararg values: Any?): String =
-        values.joinToString(prefix = "[", postfix = "]") { v ->
-            when (v) {
-                null -> "null"
-                is String -> "\"${v.replace("\\", "\\\\").replace("\"", "\\\"")}\""
-                is Boolean -> if (v) "true" else "false"
-                is Int, is Long -> v.toString()
-                is List<*> -> v.joinToString(prefix = "[", postfix = "]") { s ->
-                    "\"${(s as String).replace("\\", "\\\\").replace("\"", "\\\"")}\""
-                }
-                else -> "null"
-            }
-        }
+    private fun jsonArg(vararg values: Any?): JsonArray = RpcArgs.of(*values)
 
     /**
      * One page of the timeline, newest first.
@@ -235,5 +224,5 @@ class PhotosApi(
         listAlbums().firstOrNull { it.second == title }?.first ?: createAlbum(title)
 
     suspend fun storageQuota(): StorageQuota? =
-        Parser.parseStorageQuota(call(Rpc.STORAGE_QUOTA, "[]", write = false))
+        Parser.parseStorageQuota(call(Rpc.STORAGE_QUOTA, JsonArray(emptyList()), write = false))
 }
