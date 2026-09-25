@@ -16,6 +16,7 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -27,6 +28,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.coroutines.resume
 
 /**
  * Owns the authenticated Google Photos web session.
@@ -409,7 +411,10 @@ class GPhotosSession(private val appContext: Context) {
     suspend fun signOut() = withContext(Dispatchers.Main) {
         bridgeInstalled = false
         _state.value = State.SIGNED_OUT
-        CookieManager.getInstance().removeAllCookies(null)
+        // Waits for the removal: flushing before it completes can persist the old jar.
+        suspendCancellableCoroutine { cont ->
+            CookieManager.getInstance().removeAllCookies { cont.resume(Unit) }
+        }
         CookieManager.getInstance().flush()
         WebView(appContext).apply {
             clearCache(true)

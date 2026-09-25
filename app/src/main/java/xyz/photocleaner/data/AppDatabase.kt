@@ -69,7 +69,12 @@ abstract class AppDatabase : RoomDatabase() {
             // SQLCipher's native library must be loaded before the factory is used.
             System.loadLibrary("sqlcipher")
 
-            val passphrase = DatabaseKeyProvider.getPassphrase(context)
+            // A fresh key means any database on disk was encrypted with a key that no
+            // longer exists. It cannot be opened, so remove it rather than crash on it.
+            // On first run there is no file, and this does nothing.
+            val passphrase = DatabaseKeyProvider.getPassphrase(context) {
+                deleteFiles(context)
+            }
             val factory = SupportOpenHelperFactory(passphrase)
 
             // Deliberately no fallbackToDestructiveMigration(): a missing migration
@@ -86,12 +91,16 @@ abstract class AppDatabase : RoomDatabase() {
                 instance?.close()
                 instance = null
                 val appContext = context.applicationContext
-                appContext.deleteDatabase(DB_NAME)
-                // Room may leave -wal/-shm siblings behind.
-                listOf("$DB_NAME-wal", "$DB_NAME-shm").forEach { name ->
-                    File(appContext.getDatabasePath(DB_NAME).parentFile, name).delete()
-                }
+                deleteFiles(appContext)
                 DatabaseKeyProvider.clear(appContext)
+            }
+        }
+
+        private fun deleteFiles(context: Context) {
+            context.deleteDatabase(DB_NAME)
+            // Room may leave -wal/-shm siblings behind.
+            listOf("$DB_NAME-wal", "$DB_NAME-shm").forEach { name ->
+                File(context.getDatabasePath(DB_NAME).parentFile, name).delete()
             }
         }
     }

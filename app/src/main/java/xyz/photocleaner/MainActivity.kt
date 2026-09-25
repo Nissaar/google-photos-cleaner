@@ -339,13 +339,7 @@ private fun AppNavigation(appVm: AppViewModel) {
         }
 
         composable(Routes.SETTINGS) {
-            SettingsScreen(
-                appVm = appVm,
-                onBack = { nav.popBackStack() },
-                onSignedOut = {
-                    nav.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
-                },
-            )
+            SettingsScreen(appVm = appVm, onBack = { nav.popBackStack() })
         }
     }
 }

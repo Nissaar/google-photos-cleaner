@@ -94,10 +94,8 @@ class AppViewModel : ViewModel() {
 
     fun clearDecisions() = viewModelScope.launch { repo.clearAllDecisions() }
 
-    fun signOutAndWipe(onDone: () -> Unit = {}) {
-        viewModelScope.launch {
-            Graph.wipeEverything()
-            onDone()
-        }
+    /** Erases everything, then restarts the app, so this call does not return to the UI. */
+    fun signOutAndWipe() {
+        viewModelScope.launch { Graph.wipeEverything() }
     }
 }

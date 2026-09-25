@@ -2,6 +2,7 @@ package xyz.photocleaner
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.webkit.CookieManager
 import android.webkit.WebView
 import coil.ImageLoader
@@ -13,11 +14,14 @@ import xyz.photocleaner.data.AppDatabase
 import xyz.photocleaner.data.CleanupRepository
 import xyz.photocleaner.data.Settings
 import xyz.photocleaner.session.GPhotosSession
+import java.io.File
 
 class App : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        // Must run before anything creates a WebView, which would lock these files.
+        Graph.finishPendingWipe(this)
         // Never persist WebView debug/remote-inspection in a shipping build.
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
         Graph.init(this)
@@ -105,12 +109,47 @@ object Graph {
         appContext = context.applicationContext
     }
 
-    /** Full local wipe: Google session, encrypted database, settings and image cache. */
+    /** Marks that the WebView's own storage still has to be deleted, on next start. */
+    private const val WIPE_MARKER = "pending_webview_wipe"
+
+    /**
+     * Full local wipe — Google session, encrypted database, settings and caches —
+     * then a restart into a fresh process.
+     *
+     * The restart is what makes this safe. Screens, viewmodels and the repository all
+     * hold the database that was just deleted; carrying on in this process would
+     * write new verdicts through those stale handles into a file whose key is gone.
+     */
     suspend fun wipeEverything() {
+        // Written first, so the WebView storage is removed even if a step below fails.
+        runCatching { File(appContext.filesDir, WIPE_MARKER).createNewFile() }
         session.signOut()
         settings.clear()
         AppDatabase.wipe(appContext)
         runCatching { appContext.cacheDir.resolve("image_cache").deleteRecursively() }
         xyz.photocleaner.ui.ShareActions.clearCache(appContext)
+        restart()
+    }
+
+    /**
+     * Deletes the WebView's data directory if a wipe asked for it.
+     *
+     * Clearing cookies and web storage through the WebView APIs is asynchronous, and
+     * the restart could cut it short. Deleting the directory before any WebView
+     * exists is complete and cannot race.
+     */
+    fun finishPendingWipe(context: Context) {
+        val marker = File(context.filesDir, WIPE_MARKER)
+        if (!marker.exists()) return
+        runCatching { File(context.dataDir, "app_webview").deleteRecursively() }
+        runCatching { context.cacheDir.resolve("WebView").deleteRecursively() }
+        marker.delete()
+    }
+
+    private fun restart() {
+        val launch = appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
+            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        if (launch != null) appContext.startActivity(launch)
+        Runtime.getRuntime().exit(0)
     }
 }
