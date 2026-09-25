@@ -197,7 +197,6 @@ class GPhotosSession(private val appContext: Context) {
             mediaPlaybackRequiresUserGesture = true
             setGeolocationEnabled(false)
             saveFormData = false
-            databaseEnabled = true
             cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
         }
 

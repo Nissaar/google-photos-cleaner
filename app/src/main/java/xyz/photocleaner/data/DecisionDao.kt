@@ -12,16 +12,6 @@ interface DecisionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(decision: Decision)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertAll(decisions: List<Decision>)
-
-    @Query("SELECT * FROM decisions WHERE dedupKey = :dedupKey")
-    suspend fun find(dedupKey: String): Decision?
-
-    /** Keys already judged, so a month can resume where you left off. */
-    @Query("SELECT dedupKey FROM decisions")
-    suspend fun allDecidedKeys(): List<String>
-
     @Query("SELECT dedupKey FROM decisions WHERE takenAt >= :from AND takenAt < :to")
     suspend fun decidedKeysBetween(from: Long, to: Long): List<String>
 
@@ -63,9 +53,6 @@ interface DecisionDao {
             "AND appliedMode = 'TRASH' ORDER BY appliedAt DESC",
     )
     fun applied(): Flow<List<Decision>>
-
-    @Query("SELECT * FROM decisions WHERE verdict = 'DELETE' AND applied = 1 AND appliedAt >= :since")
-    suspend fun appliedSince(since: Long): List<Decision>
 
     @Query(
         "UPDATE decisions SET applied = 1, appliedAt = :at, appliedMode = :mode " +

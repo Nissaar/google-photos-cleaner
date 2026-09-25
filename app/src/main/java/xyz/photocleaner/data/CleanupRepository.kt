@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import xyz.photocleaner.api.MediaItem
 import xyz.photocleaner.api.PhotosApi
+import xyz.photocleaner.api.PhotosRemote
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlin.coroutines.cancellation.CancellationException
@@ -33,7 +34,7 @@ data class RestoreResult(
  * rather than silently marked done while still in the library.
  */
 class CleanupRepository(
-    private val api: PhotosApi,
+    private val api: PhotosRemote,
     private val dao: DecisionDao,
     private val indexDao: LibraryIndexDao,
     private val settings: Settings,

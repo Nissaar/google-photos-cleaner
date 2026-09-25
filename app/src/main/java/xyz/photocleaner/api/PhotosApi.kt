@@ -18,7 +18,7 @@ import kotlin.coroutines.cancellation.CancellationException
 class PhotosApi(
     private val session: GPhotosSession,
     private val pacer: Pacer = Pacer(),
-) {
+) : PhotosRemote {
 
     enum class Source(val code: Int) { LIBRARY(1), ARCHIVE(2), BOTH(3) }
 
@@ -45,11 +45,11 @@ class PhotosApi(
      * [startTimestamp] seeks into the timeline by date-taken, which is what makes
      * month-scoped browsing possible without walking the whole library.
      */
-    suspend fun getItemsByTakenDate(
-        startTimestamp: Long? = null,
-        pageId: String? = null,
-        pageSize: Int = 200,
-        source: Source = Source.LIBRARY,
+    override suspend fun getItemsByTakenDate(
+        startTimestamp: Long?,
+        pageId: String?,
+        pageSize: Int,
+        source: Source,
     ): TimelinePage {
         val args = jsonArg(pageId, startTimestamp, pageSize, null, 1, source.code)
         return Parser.parseTimelinePage(call(Rpc.ITEMS_BY_TAKEN_DATE, args, write = false))
@@ -62,11 +62,11 @@ class PhotosApi(
      * the month and page until we fall off the start of it. [onProgress] is invoked
      * as pages arrive so the UI can show real progress on a large month.
      */
-    suspend fun getItemsForMonth(
+    override suspend fun getItemsForMonth(
         month: YearMonth,
-        zone: ZoneId = ZoneId.systemDefault(),
-        source: Source = Source.LIBRARY,
-        onProgress: (Int) -> Unit = {},
+        zone: ZoneId,
+        source: Source,
+        onProgress: (Int) -> Unit,
     ): List<MediaItem> {
         val startMs = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
         val endMs = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
@@ -117,15 +117,15 @@ class PhotosApi(
     /**
      * Moves items to the Google Photos trash, where they stay recoverable for 60 days.
      */
-    suspend fun moveToTrash(
+    override suspend fun moveToTrash(
         dedupKeys: List<String>,
-        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+        onProgress: (done: Int, total: Int) -> Unit,
     ): MutationResult = mutate(dedupKeys, restore = false, onProgress)
 
     /** Restores previously trashed items — the undo path for [moveToTrash]. */
-    suspend fun restoreFromTrash(
+    override suspend fun restoreFromTrash(
         dedupKeys: List<String>,
-        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+        onProgress: (done: Int, total: Int) -> Unit,
     ): MutationResult = mutate(dedupKeys, restore = true, onProgress)
 
     private suspend fun mutate(
@@ -192,10 +192,10 @@ class PhotosApi(
     /**
      * Adds items to an existing album. Note this takes **mediaKeys**, not dedupKeys.
      */
-    suspend fun addToAlbum(
+    override suspend fun addToAlbum(
         albumMediaKey: String,
         mediaKeys: List<String>,
-        onProgress: (Int, Int) -> Unit = { _, _ -> },
+        onProgress: (Int, Int) -> Unit,
     ): MutationResult {
         if (mediaKeys.isEmpty()) return MutationResult(emptyList())
         val done = mutableListOf<String>()
@@ -220,9 +220,6 @@ class PhotosApi(
      * Finds an album by exact title, creating it if absent.
      * Backs the "move to a To Be Deleted album" mode.
      */
-    suspend fun findOrCreateAlbum(title: String): String? =
+    override suspend fun findOrCreateAlbum(title: String): String? =
         listAlbums().firstOrNull { it.second == title }?.first ?: createAlbum(title)
-
-    suspend fun storageQuota(): StorageQuota? =
-        Parser.parseStorageQuota(call(Rpc.STORAGE_QUOTA, JsonArray(emptyList()), write = false))
 }

@@ -1,6 +1,7 @@
 package xyz.photocleaner.data
 
 import android.content.Context
+import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -26,7 +27,11 @@ enum class CleanupMode {
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
-class Settings(private val context: Context) {
+/**
+ * App preferences. Takes the store rather than a Context so tests can hand it one
+ * backed by a temporary file; the app always uses [Settings.from].
+ */
+class Settings(private val store: DataStore<Preferences>) {
 
     private object Keys {
         val MODE = stringPreferencesKey("cleanup_mode")
@@ -41,25 +46,28 @@ class Settings(private val context: Context) {
 
     companion object {
         const val DEFAULT_ALBUM_NAME = "To Be Deleted"
+
+        /** The app's settings, in the same "settings" file every version has used. */
+        fun from(context: Context) = Settings(context.applicationContext.dataStore)
     }
 
-    val mode: Flow<CleanupMode> = context.dataStore.data.map { prefs ->
+    val mode: Flow<CleanupMode> = store.data.map { prefs ->
         runCatching { CleanupMode.valueOf(prefs[Keys.MODE] ?: CleanupMode.TRASH.name) }
             .getOrDefault(CleanupMode.TRASH)
     }
 
-    val albumName: Flow<String> = context.dataStore.data.map { prefs ->
+    val albumName: Flow<String> = store.data.map { prefs ->
         prefs[Keys.ALBUM_NAME]?.takeIf { it.isNotBlank() } ?: DEFAULT_ALBUM_NAME
     }
 
     /** Require biometric / device credential each time the app is opened. */
-    val appLock: Flow<Boolean> = context.dataStore.data.map { it[Keys.APP_LOCK] ?: false }
+    val appLock: Flow<Boolean> = store.data.map { it[Keys.APP_LOCK] ?: false }
 
     /** Hide photos you have already judged when re-opening a month. */
-    val skipDecided: Flow<Boolean> = context.dataStore.data.map { it[Keys.SKIP_DECIDED] ?: true }
+    val skipDecided: Flow<Boolean> = store.data.map { it[Keys.SKIP_DECIDED] ?: true }
 
     val includeArchived: Flow<Boolean> =
-        context.dataStore.data.map { it[Keys.INCLUDE_ARCHIVED] ?: false }
+        store.data.map { it[Keys.INCLUDE_ARCHIVED] ?: false }
 
     /**
      * Whether a Google session was live last time the app ran.
@@ -68,7 +76,7 @@ class Settings(private val context: Context) {
      * photos.google.com page load just to discover we are already signed in.
      */
     val wasSignedIn: Flow<Boolean> =
-        context.dataStore.data.map { it[Keys.WAS_SIGNED_IN] ?: false }
+        store.data.map { it[Keys.WAS_SIGNED_IN] ?: false }
 
     suspend fun setWasSignedIn(value: Boolean) = put(Keys.WAS_SIGNED_IN, value)
 
@@ -80,7 +88,7 @@ class Settings(private val context: Context) {
      * is occasionally necessary — reporting a bug, or taking screenshots for docs.
      */
     val allowScreenshots: Flow<Boolean> =
-        context.dataStore.data.map { it[Keys.ALLOW_SCREENSHOTS] ?: false }
+        store.data.map { it[Keys.ALLOW_SCREENSHOTS] ?: false }
 
     suspend fun setAllowScreenshots(value: Boolean) = put(Keys.ALLOW_SCREENSHOTS, value)
 
@@ -89,7 +97,7 @@ class Settings(private val context: Context) {
      * double-counting. Tallies saved before it may be inflated; see
      * [CleanupRepository.recount].
      */
-    val recountDone: Flow<Boolean> = context.dataStore.data.map { it[Keys.RECOUNT_V4_DONE] ?: false }
+    val recountDone: Flow<Boolean> = store.data.map { it[Keys.RECOUNT_V4_DONE] ?: false }
 
     suspend fun setRecountDone() = put(Keys.RECOUNT_V4_DONE, true)
 
@@ -100,10 +108,10 @@ class Settings(private val context: Context) {
     suspend fun setIncludeArchived(enabled: Boolean) = put(Keys.INCLUDE_ARCHIVED, enabled)
 
     private suspend fun <T> put(key: Preferences.Key<T>, value: T) {
-        context.dataStore.edit { it[key] = value }
+        store.edit { it[key] = value }
     }
 
     suspend fun clear() {
-        context.dataStore.edit { it.clear() }
+        store.edit { it.clear() }
     }
 }

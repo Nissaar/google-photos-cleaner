@@ -286,10 +286,7 @@ private fun DecisionTile(decision: Decision, removable: Boolean, onRemove: () ->
         ) {
             AsyncImage(
                 model = ImageRequest.Builder(context)
-                    .data(
-                        "${decision.thumbBaseUrl}=w300-h300-k-no" +
-                            "?authuser=${xyz.photocleaner.Graph.session.authUser}",
-                    )
+                    .data(decision.thumbUrl(300, 300, xyz.photocleaner.Graph.session.authUser))
                     .crossfade(true)
                     .build(),
                 contentDescription = null,

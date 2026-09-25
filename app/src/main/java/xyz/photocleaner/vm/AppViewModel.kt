@@ -77,11 +77,6 @@ class AppViewModel : ViewModel() {
         }
     }
 
-    /** Tries to reach Google again, e.g. from the offline banner. */
-    fun refreshSession() {
-        viewModelScope.launch { warmSession() }
-    }
-
     /** Called when the login WebView reports a signed-in Photos page. */
     fun onLoginCompleted() {
         viewModelScope.launch { settings.setWasSignedIn(true) }

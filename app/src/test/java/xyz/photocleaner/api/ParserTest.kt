@@ -208,12 +208,4 @@ class ParserTest {
         assertEquals("albumKey2" to "Holidays", result.albums[1])
         assertEquals("next", result.nextPageId)
     }
-
-    @Test
-    fun `parses storage quota`() {
-        val quota = Parser.parseStorageQuota(parse("""[["1500000000"],"16000000000"]"""))
-        assertNotNull(quota)
-        assertEquals(1_500_000_000L, quota!!.usedBytes)
-        assertEquals(16_000_000_000L, quota.totalBytes)
-    }
 }

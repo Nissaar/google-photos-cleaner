@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import xyz.photocleaner.api.MediaItem
+import xyz.photocleaner.api.thumbnailUrl
 
 enum class Verdict { KEEP, DELETE }
 
@@ -39,6 +40,9 @@ data class Decision(
      */
     val appliedMode: CleanupMode? = null,
 ) {
+    fun thumbUrl(width: Int, height: Int, authUser: Int): String =
+        thumbnailUrl(thumbBaseUrl, width, height, authUser)
+
     companion object {
         fun from(item: MediaItem, verdict: Verdict, now: Long = System.currentTimeMillis()) =
             Decision(

@@ -98,7 +98,7 @@ object Graph {
 
     val session: GPhotosSession by lazy { GPhotosSession(appContext) }
     val api: PhotosApi by lazy { PhotosApi(session) }
-    val settings: Settings by lazy { Settings(appContext) }
+    val settings: Settings by lazy { Settings.from(appContext) }
     private val db: AppDatabase by lazy { AppDatabase.get(appContext) }
     val repository: CleanupRepository by lazy {
         CleanupRepository(api, db.decisionDao(), db.libraryIndexDao(), settings)

@@ -81,14 +81,6 @@ object Parser {
         )
     }
 
-    fun parseStorageQuota(raw: JsonElement?): StorageQuota? {
-        val data = raw.arr() ?: return null
-        // Values arrive as strings; used may be nested one level depending on account type.
-        val used = data.at(0).arr()?.at(0).long() ?: data.at(0).long() ?: return null
-        val total = data.at(1).long() ?: return null
-        return StorageQuota(used, total)
-    }
-
     /** The album-create response returns the new album's mediaKey. */
     fun parseCreatedAlbumKey(raw: JsonElement?): String? {
         val data = raw.arr() ?: return null
