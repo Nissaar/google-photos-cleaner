@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -359,7 +360,9 @@ class GPhotosSession(private val appContext: Context) {
                 null,
             )
         }
-        val res = runCatching { withTimeout(5_000) { deferred.await() } }.getOrNull()
+        // withTimeoutOrNull, not runCatching: the latter would also swallow the
+        // caller being cancelled, and keep probing a screen nobody is looking at.
+        val res = withTimeoutOrNull(5_000) { deferred.await() }
         pending.remove(id)
         val payload = res?.getOrNull() ?: return false
         return runCatching {

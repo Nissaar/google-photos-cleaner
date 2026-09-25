@@ -13,6 +13,7 @@ import xyz.photocleaner.Graph
 import xyz.photocleaner.api.MediaItem
 import xyz.photocleaner.data.Verdict
 import java.time.YearMonth
+import kotlin.coroutines.cancellation.CancellationException
 
 data class SwipeState(
     val month: YearMonth? = null,
@@ -90,6 +91,10 @@ class SwipeViewModel : ViewModel() {
                     _state.value = _state.value.copy(loadedCount = count)
                 }
                 _state.value = _state.value.copy(items = items, loading = false, index = 0)
+            } catch (e: CancellationException) {
+                // Superseded or cancelled on purpose — not an error to show, and the
+                // state now belongs to whichever run replaced this one.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     loading = false,

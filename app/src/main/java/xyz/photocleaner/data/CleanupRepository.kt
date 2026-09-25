@@ -7,6 +7,7 @@ import xyz.photocleaner.api.MediaItem
 import xyz.photocleaner.api.PhotosApi
 import java.time.YearMonth
 import java.time.ZoneId
+import kotlin.coroutines.cancellation.CancellationException
 
 /** Outcome of applying pending verdicts. */
 data class ApplyResult(
@@ -286,6 +287,8 @@ class CleanupRepository(
                 failed = keys.size - done.size,
                 error = result.error,
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             ApplyResult(CleanupMode.TRASH, 0, keys.size, error = e.message ?: "Failed")
         }
@@ -308,6 +311,8 @@ class CleanupRepository(
                 dao.markApplied(done, System.currentTimeMillis(), CleanupMode.ALBUM)
             }
             ApplyResult(CleanupMode.ALBUM, done.size, pending.size - done.size, name, result.error)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             ApplyResult(CleanupMode.ALBUM, 0, pending.size, name, e.message ?: "Failed")
         }

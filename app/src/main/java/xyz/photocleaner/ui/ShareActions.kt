@@ -17,6 +17,7 @@ import xyz.photocleaner.Graph
 import xyz.photocleaner.api.MediaItem
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * "Open in Google Photos" and "Share" for the item under review.
@@ -98,6 +99,8 @@ object ShareActions {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
         Result.success(Unit)
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         Result.failure(e)
     }

@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import xyz.photocleaner.Graph
 import java.time.YearMonth
+import kotlin.coroutines.cancellation.CancellationException
 
 /** One row of the month grid: how many photos it holds and how many you have judged. */
 data class MonthEntry(
@@ -126,6 +127,10 @@ class MonthsViewModel : ViewModel() {
                     _state.value = _state.value.copy(newFound = found)
                 }
                 _state.value = _state.value.copy(scanning = false, initialScan = false, newFound = 0)
+            } catch (e: CancellationException) {
+                // Superseded or cancelled on purpose — not an error to show, and the
+                // state now belongs to whichever run replaced this one.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     scanning = false,

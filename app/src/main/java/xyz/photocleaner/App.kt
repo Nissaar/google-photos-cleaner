@@ -8,6 +8,9 @@ import android.webkit.WebView
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import okhttp3.OkHttpClient
 import xyz.photocleaner.api.PhotosApi
 import xyz.photocleaner.data.AppDatabase
@@ -96,6 +99,13 @@ object Graph {
         host.endsWith(".googleusercontent.com") ||
             host.endsWith(".ggpht.com") ||
             host.endsWith(".google.com")
+
+    /**
+     * For work that must outlive the screen that started it. A confirmed delete runs
+     * as a series of batches; cancelling it halfway because the user navigated away
+     * would leave Google having trashed items this device never recorded.
+     */
+    val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     val session: GPhotosSession by lazy { GPhotosSession(appContext) }
     val api: PhotosApi by lazy { PhotosApi(session) }

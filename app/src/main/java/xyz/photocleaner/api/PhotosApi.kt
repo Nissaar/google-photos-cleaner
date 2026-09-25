@@ -6,6 +6,7 @@ import xyz.photocleaner.session.SessionException
 import xyz.photocleaner.util.runCatchingNonCancel
 import java.time.YearMonth
 import java.time.ZoneId
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Typed wrapper over the Google Photos web RPCs.
@@ -156,6 +157,8 @@ class PhotosApi(
             }
             try {
                 call(Rpc.TRASH_OR_RESTORE, args, write = true)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Stop here, but report everything Google already accepted.
                 return MutationResult(done, e.message ?: "Request failed")
@@ -211,6 +214,8 @@ class PhotosApi(
         for ((index, batch) in batches.withIndex()) {
             try {
                 call(Rpc.ALBUM_ADD_ITEMS, jsonArg(batch, albumMediaKey), write = true)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Stop here, but report the batches Google already accepted.
                 return MutationResult(done, e.message ?: "Request failed")
