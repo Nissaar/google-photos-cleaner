@@ -112,9 +112,14 @@ class CleanupRepository(
      *  - **resume** — pick a interrupted first pass back up where it stopped;
      *  - **incremental** — once complete, read only photos added since the last run.
      *
-     * Counts are written after *every page*. That is what makes the months appear as
-     * they are found, and what means closing the app mid-scan costs one page rather
-     * than the entire run.
+     * A first pass writes its counts after *every page*. That is what makes the months
+     * appear as they are found, and what means closing the app mid-scan costs one page
+     * rather than the entire run.
+     *
+     * An incremental run writes nothing until it has finished, then everything at once.
+     * Saving it page by page would store the index as incomplete, and an interrupted
+     * run would then be resumed as a first pass — walking the whole library again and
+     * adding every photo on top of the counts it already had.
      */
     suspend fun refreshMonthCounts(
         full: Boolean = false,
@@ -189,7 +194,7 @@ class CleanupRepository(
             skipUntilKey = null
             firstRequest = false
 
-            saveProgress(counts, newest, lastTimestamp, lastKey, complete = false)
+            if (!incremental) saveProgress(counts, newest, lastTimestamp, lastKey, complete = false)
             onProgress(total)
 
             if (reachedKnown) {
@@ -203,6 +208,8 @@ class CleanupRepository(
             }
         }
 
+        // An unfinished incremental run is dropped whole; the next one redoes it.
+        if (incremental && !finished) return
         saveProgress(counts, newest, lastTimestamp, lastKey, complete = finished)
     }
 
@@ -213,20 +220,18 @@ class CleanupRepository(
         resumeKey: String?,
         complete: Boolean,
     ) {
-        if (counts.isNotEmpty()) {
-            indexDao.upsertMonthCounts(counts.map { MonthCount(it.key, it.value) })
-        }
-        if (newest != null) {
-            indexDao.setScanState(
+        indexDao.saveIndex(
+            counts = counts.map { MonthCount(it.key, it.value) },
+            state = newest?.let {
                 ScanState(
-                    newestTimestamp = newest,
+                    newestTimestamp = it,
                     resumeTimestamp = resumeTimestamp,
                     resumeKey = resumeKey,
                     complete = complete,
                     scannedAt = System.currentTimeMillis(),
-                ),
-            )
-        }
+                )
+            },
+        )
     }
 
     /**

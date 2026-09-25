@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -67,4 +68,15 @@ interface LibraryIndexDao {
 
     @Query("DELETE FROM scan_state")
     suspend fun clearScanState()
+
+    /**
+     * Writes tallies and the scan marker together. Written separately, a process
+     * death between the two leaves counts that include a page the marker says has
+     * not been read — and the next run counts that page again.
+     */
+    @Transaction
+    suspend fun saveIndex(counts: List<MonthCount>, state: ScanState?) {
+        if (counts.isNotEmpty()) upsertMonthCounts(counts)
+        if (state != null) setScanState(state)
+    }
 }
