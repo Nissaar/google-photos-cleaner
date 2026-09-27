@@ -197,9 +197,15 @@ class CleanupRepositoryTest {
 
         assertEquals(1, result.succeeded)
         assertEquals(1, result.failed)
-        assertEquals(listOf("m-a1"), remote.inAlbum)
-        assertEquals(CleanupMode.ALBUM, dao.all.single { it.applied }.appliedMode)
-        assertEquals("a2", dao.pendingOnce(Verdict.DELETE).single().dedupKey)
+        // Which of the two Google accepts first depends on decision order, which two
+        // verdicts made in the same millisecond do not fix. Assert the pairing instead:
+        // whatever was added is marked applied, and the other one is still pending.
+        val added = remote.inAlbum.single()
+        val applied = dao.all.single { it.applied }
+        assertEquals(added, applied.mediaKey)
+        assertEquals(CleanupMode.ALBUM, applied.appliedMode)
+        val stillPending = dao.pendingOnce(Verdict.DELETE).single()
+        assertTrue(stillPending.dedupKey != applied.dedupKey)
         assertTrue("album items are not restorable", repo.appliedDeletes().first().isEmpty())
     }
 
