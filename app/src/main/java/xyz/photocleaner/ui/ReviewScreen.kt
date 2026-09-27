@@ -255,6 +255,23 @@ fun ReviewScreen(
             confirmButton = { TextButton(onClick = vm::dismissResult) { Text("OK") } },
         )
     }
+
+    progress.restoreResult?.let { result ->
+        AlertDialog(
+            onDismissRequest = vm::dismissResult,
+            title = { Text(if (result.error == null) "Restored" else "Partly restored") },
+            text = {
+                Text(
+                    buildString {
+                        append("${result.restored} back in your library.")
+                        if (result.failed > 0) append("\n${result.failed} could not be restored.")
+                        result.error?.let { append("\n\n$it") }
+                    },
+                )
+            },
+            confirmButton = { TextButton(onClick = vm::dismissResult) { Text("OK") } },
+        )
+    }
 }
 
 @Composable
@@ -269,10 +286,7 @@ private fun DecisionTile(decision: Decision, removable: Boolean, onRemove: () ->
         ) {
             AsyncImage(
                 model = ImageRequest.Builder(context)
-                    .data(
-                        "${decision.thumbBaseUrl}=w300-h300-k-no" +
-                            "?authuser=${xyz.photocleaner.Graph.session.authUser}",
-                    )
+                    .data(decision.thumbUrl(300, 300, xyz.photocleaner.Graph.session.authUser))
                     .crossfade(true)
                     .build(),
                 contentDescription = null,

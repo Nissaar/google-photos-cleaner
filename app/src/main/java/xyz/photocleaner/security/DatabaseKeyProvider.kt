@@ -21,10 +21,21 @@ object DatabaseKeyProvider {
     private const val KEY_DB_PASSPHRASE = "db_passphrase"
     private const val PASSPHRASE_BYTES = 32
 
+    /** Keystore errors straight after boot or an OS update are often transient. */
+    private const val OPEN_ATTEMPTS = 3
+    private const val RETRY_DELAY_MS = 300L
+
     @Volatile
     private var cached: ByteArray? = null
 
-    fun getPassphrase(context: Context): ByteArray {
+    /**
+     * Returns the database passphrase, creating one on first run.
+     *
+     * [onKeyLost] runs when an existing key cannot be read back and a new one has to
+     * be made. The database encrypted with the old key is unreadable from then on,
+     * so the caller must remove it — leaving it would fail to open on every launch.
+     */
+    fun getPassphrase(context: Context, onKeyLost: () -> Unit = {}): ByteArray {
         cached?.let { return it.copyOf() }
 
         synchronized(this) {
@@ -36,12 +47,12 @@ object DatabaseKeyProvider {
                 .setRequestStrongBoxBacked(true)
                 .build()
 
-            val prefs = try {
-                buildPrefs(context, masterKey)
-            } catch (e: Exception) {
-                // A corrupted keystore entry (e.g. after a restore onto a new device)
-                // makes the store permanently unreadable. Reset it: the contents are
-                // only local decisions, which are safe to rebuild.
+            var lost = false
+            val prefs = openWithRetry(context, masterKey) ?: run {
+                // Still unreadable after retrying: a corrupted keystore entry (e.g.
+                // after a restore onto a new device) is permanent. Deleting the key is
+                // a last resort, because it takes the database with it.
+                lost = true
                 context.applicationContext.deleteSharedPreferences(PREFS_FILE)
                 buildPrefs(context, masterKey)
             }
@@ -52,16 +63,28 @@ object DatabaseKeyProvider {
             } else {
                 ByteArray(PASSPHRASE_BYTES).also { fresh ->
                     SecureRandom().nextBytes(fresh)
-                    prefs.edit()
+                    // commit(), not apply(): the database is about to be encrypted with
+                    // this key, and a process death before an async write lands would
+                    // leave a database nothing can ever open.
+                    val saved = prefs.edit()
                         .putString(KEY_DB_PASSPHRASE, Base64.encodeToString(fresh, Base64.NO_WRAP))
-                        .apply()
+                        .commit()
+                    check(saved) { "Could not store the database key" }
                 }
             }
+            if (lost || existing == null) onKeyLost()
 
             cached = passphrase
             return passphrase.copyOf()
         }
     }
+
+    private fun openWithRetry(context: Context, masterKey: MasterKey) =
+        (1..OPEN_ATTEMPTS).firstNotNullOfOrNull { attempt ->
+            runCatching { buildPrefs(context, masterKey) }.getOrNull().also {
+                if (it == null && attempt < OPEN_ATTEMPTS) Thread.sleep(RETRY_DELAY_MS)
+            }
+        }
 
     private fun buildPrefs(context: Context, masterKey: MasterKey) =
         EncryptedSharedPreferences.create(

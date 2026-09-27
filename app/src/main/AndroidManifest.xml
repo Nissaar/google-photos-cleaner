@@ -79,7 +79,7 @@
         <meta-data
             android:name="android.webkit.WebView.MetricsOptOut"
             android:value="true" />
-        <!-- Do not let the WebView provider pre-warm/renderer-share with other apps' data. -->
+        <!-- Check pages the WebView loads against Google Safe Browsing. -->
         <meta-data
             android:name="android.webkit.WebView.EnableSafeBrowsing"
             android:value="true" />
