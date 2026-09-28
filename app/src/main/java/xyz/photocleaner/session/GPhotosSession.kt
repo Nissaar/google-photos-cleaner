@@ -196,7 +196,6 @@ class GPhotosSession(private val appContext: Context) {
             setSupportMultipleWindows(true)
             mediaPlaybackRequiresUserGesture = true
             setGeolocationEnabled(false)
-            saveFormData = false
             cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
         }
 
