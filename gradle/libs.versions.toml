@@ -1,27 +1,27 @@
 [versions]
-agp = "8.7.3"
-kotlin = "2.0.21"
-ksp = "2.0.21-1.0.28"
-coreKtx = "1.15.0"
-lifecycle = "2.8.7"
-activityCompose = "1.9.3"
-composeBom = "2024.12.01"
-navigation = "2.8.5"
-room = "2.6.1"
-webkit = "1.12.1"
-security = "1.1.0-alpha06"
+agp = "9.4.1"
+kotlin = "2.4.21"
+ksp = "2.3.12"
+coreKtx = "1.19.1"
+lifecycle = "2.11.0"
+activityCompose = "1.13.0"
+composeBom = "2026.09.00"
+navigation = "2.10.2"
+room = "2.8.5"
+webkit = "1.18.0"
+security = "1.1.0"
 biometric = "1.2.0-alpha05"
 coil = "2.7.0"
-media3 = "1.5.1"
-sqlcipher = "4.6.1"
-sqlite = "2.4.0"
-datastore = "1.1.1"
-serialization = "1.7.3"
+media3 = "1.11.1"
+sqlcipher = "4.19.1"
+sqlite = "2.7.1"
+datastore = "1.3.0"
+serialization = "1.12.0"
 junit = "4.13.2"
-sqliteJdbc = "3.46.1.3"
+sqliteJdbc = "3.53.4.0"
 # Matches the kotlinx-coroutines-core version the AndroidX libraries resolve to.
-coroutinesTest = "1.8.1"
-androidxJunit = "1.2.1"
+coroutinesTest = "1.11.0"
+androidxJunit = "1.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -46,7 +46,7 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 androidx-sqlite = { group = "androidx.sqlite", name = "sqlite", version.ref = "sqlite" }
 sqlcipher = { group = "net.zetetic", name = "sqlcipher-android", version.ref = "sqlcipher" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
-okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version = "4.12.0" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version = "4.12.1" }
 media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
 media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version.ref = "media3" }
