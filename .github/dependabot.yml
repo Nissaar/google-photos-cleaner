@@ -1,11 +1,38 @@
-# Actions are pinned to commit SHAs so a moved tag cannot change what runs. This
-# keeps those pins current: Dependabot opens a PR when a new release is out.
+# Version updates arrive as PULL REQUESTS, never merged automatically. Each PR is assigned to
+# Nissaar (GitHub notifies you), gets a "PR report" comment from .github/workflows/pr-report.yml
+# (what changed + every check's result), and is merged by hand.
+#   - minor/patch bumps are grouped into one PR per ecosystem; majors come as their own PR
+#   - database majors are ignored: they need a dump/restore, not a tag bump
 version: 2
 updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Indian/Mauritius
+    assignees: [Nissaar]
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  # Actions are pinned to commit SHAs so a moved tag cannot change what runs. This
+  # keeps those pins current: Dependabot opens a PR when a new release is out.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Indian/Mauritius
+    assignees: [Nissaar]
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 3
     groups:
       actions:
         patterns: ["*"]
