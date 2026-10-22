@@ -1,5 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Renovate opens update PRs for review; nothing is merged automatically. See also .github/workflows/pr-report.yml."
+  ],
   "extends": [
     "config:recommended",
     "helpers:pinGitHubActionDigests"
