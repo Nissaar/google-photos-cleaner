@@ -1,15 +1,12 @@
 package xyz.photocleaner.net
 
-import okhttp3.Call
-import okhttp3.Connection
-import okhttp3.Interceptor
+import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
-import java.util.concurrent.TimeUnit
 
 /** The session cookie must reach Google's media hosts over HTTPS, and nothing else. */
 class GoogleSessionInterceptorTest {
@@ -48,30 +45,22 @@ class GoogleSessionInterceptorTest {
         assertNull(send("http://lh3.googleusercontent.com/abc").header("Cookie"))
     }
 
+    /**
+     * Runs the interceptor in a real client whose last interceptor records the request
+     * instead of touching the network, so the test does not depend on the shape of
+     * OkHttp's Interceptor.Chain (which grew many members in OkHttp 5).
+     */
     private fun send(url: String, builder: Request.Builder = Request.Builder()): Request {
-        val chain = CapturingChain(builder.url(url).build())
-        interceptor.intercept(chain)
-        return chain.sent!!
-    }
-
-    private class CapturingChain(private val request: Request) : Interceptor.Chain {
         var sent: Request? = null
-
-        override fun request() = request
-
-        override fun proceed(request: Request): Response {
-            sent = request
-            return Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
-                .code(200).message("OK").build()
-        }
-
-        override fun connection(): Connection? = null
-        override fun call(): Call = throw UnsupportedOperationException()
-        override fun connectTimeoutMillis() = 0
-        override fun withConnectTimeout(timeout: Int, unit: TimeUnit) = this
-        override fun readTimeoutMillis() = 0
-        override fun withReadTimeout(timeout: Int, unit: TimeUnit) = this
-        override fun writeTimeoutMillis() = 0
-        override fun withWriteTimeout(timeout: Int, unit: TimeUnit) = this
+        val client = OkHttpClient.Builder()
+            .addInterceptor(interceptor)
+            .addInterceptor { chain ->
+                sent = chain.request()
+                Response.Builder().request(sent!!).protocol(Protocol.HTTP_1_1)
+                    .code(200).message("OK").build()
+            }
+            .build()
+        client.newCall(builder.url(url).build()).execute().close()
+        return sent!!
     }
 }
