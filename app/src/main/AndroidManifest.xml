@@ -28,6 +28,16 @@
         tools:node="remove" />
 
     <!--
+      A newer media3 / AndroidX dependency now merges WAKE_LOCK into the manifest. It
+      only matters if ExoPlayer.setWakeMode() is called with something other than the
+      default WAKE_MODE_NONE, which this app never does (no background playback).
+      Removed so the permission set stays INTERNET plus the biometric ones.
+    -->
+    <uses-permission
+        android:name="android.permission.WAKE_LOCK"
+        tools:node="remove" />
+
+    <!--
       Android 11+ hides other installed packages by default, so naming Google Photos
       in an intent silently fails without declaring it here. This is the narrow form:
       one named package, not the QUERY_ALL_PACKAGES permission.
